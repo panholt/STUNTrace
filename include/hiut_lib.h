@@ -9,7 +9,7 @@ struct hiutTTLinfo{
     //int ttl;
     //int messageSize;
     StunMsgId stunMsgId;
-    
+
 };
 
 struct hiutPathElement{
@@ -32,8 +32,6 @@ struct hiutResult{
     uint32_t stunLen;
     struct hiutPathElement pathElement[MAX_TTL];
     struct hiutTTLinfo ttlInfo[MAX_TTL];
-    /* DISCUSS */
-    DiscussData discuss;
 };
 
 

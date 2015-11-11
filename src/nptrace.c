@@ -231,7 +231,7 @@ handleStunRespSucsessfull(struct hiutResult* result,
                                sockfd,
                                sendPacket,
                                StunStatusCallBack,
-                               &result->discuss );
+                               NULL );
   }
 
 }
@@ -308,7 +308,7 @@ handleStunNoAnswer(struct hiutResult* result)
                                sockfd,
                                sendPacket,
                                StunStatusCallBack,
-                               &result->discuss );
+                               NULL );
 
   }
   else
@@ -366,7 +366,7 @@ handleStunRespIcmp(struct hiutResult* result,
                                  sockfd,
                                  sendPacket,
                                  StunStatusCallBack,
-                                 &result->discuss );
+                                 NULL );
     }
   }
   else if ( (ICMPtype == 3) && (srcAddr->sa_family == AF_INET) )
@@ -745,14 +745,6 @@ main(int   argc,
   result.user_start_ttl = config.start_ttl;
   result.wait_ms        = config.wait_ms;
 
-  /*DISCUSS*/
-  result.discuss.streamType                     = 0;
-  result.discuss.interactivity                  = 0;
-  result.discuss.networkStatus_flags            = 0;
-  result.discuss.networkStatus_nodeCnt          = 0;
-  result.discuss.networkStatus_upMaxBandwidth   = 0;
-  result.discuss.networkStatus_downMaxBandwidth = 0;
-
 
   srand( time(NULL) ); /* Initialise the random seed. */
 
@@ -821,7 +813,7 @@ main(int   argc,
                                     sockfd,
                                     sendPacket,
                                     StunStatusCallBack,
-                                    &result.discuss);
+                                    NULL);
     if (i == 1)
     {
       result.stunLen = len;
