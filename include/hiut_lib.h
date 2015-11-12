@@ -32,6 +32,7 @@ struct hiutResult{
     uint32_t stunLen;
     struct hiutPathElement pathElement[MAX_TTL];
     struct hiutTTLinfo ttlInfo[MAX_TTL];
+    struct npa_trace trace;
 };
 
 

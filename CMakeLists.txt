@@ -120,6 +120,20 @@ UncrustifyTop(${uncrustify})
 Include(ExternalProject)
 
 ExternalProject_Add(
+   project_npa
+   GIT_REPOSITORY https://github.com/palerikm/NPAlib
+   CMAKE_ARGS -Doptimize=OFF -Dbuild_docs=OFF -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+   INSTALL_DIR "${dist_dir}"
+   UPDATE_DISCONNECTED 1
+)
+
+ExternalProject_Get_Property(project_npa install_dir)
+include_directories ( "${install_dir}/include" )
+add_library(npa STATIC IMPORTED)
+set_property(TARGET npa PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMAKE_SHARED_MODULE_PREFIX}npa${CMAKE_SHARED_LIBRARY_SUFFIX}")
+add_dependencies(npa project_npa)
+
+ExternalProject_Add(
    project_sockaddrutil
    GIT_REPOSITORY https://github.com/NPPT/sockaddrutil.git
    CMAKE_ARGS -Doptimize=OFF -Duse_context=ON -Dbuild_docs=OFF -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
@@ -146,6 +160,7 @@ include_directories ( "${install_dir}/include" )
 add_library(stunlib STATIC IMPORTED)
 set_property(TARGET stunlib PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMAKE_SHARED_MODULE_PREFIX}stunlib${CMAKE_SHARED_LIBRARY_SUFFIX}")
 add_dependencies(stunlib project_stunlib)
+
 
 
 ## include the parts

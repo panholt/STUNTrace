@@ -16,7 +16,9 @@ add_executable ( nptrace
                  sockethelper.c
                  nptrace.c )
 
-target_link_libraries ( nptrace PRIVATE sockaddrutil stunlib
+target_link_libraries ( nptrace PRIVATE npa
+                        sockaddrutil
+                        stunlib
                         pthread
                         ${ADDITIONAL_LIBS})
 

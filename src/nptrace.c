@@ -29,6 +29,9 @@
 #include <stunlib.h>
 #include <stunclient.h>
 #include <stun_intern.h>
+
+#include <npalib.h>
+
 #include "utils.h"
 #include "iphelper.h"
 #include "sockethelper.h"
@@ -142,7 +145,7 @@ printResultLine(OUTPUT_FORMAT    format,
 }
 
 void
-stopAndExit(uint32_t wait)
+printTimeSpent(uint32_t wait)
 {
   int             time;
   struct timespec timer;
@@ -180,6 +183,33 @@ stopAndExit(uint32_t wait)
     /* printf("slutt"); */
       printf("\n");
   }
+}
+
+
+void
+stopAndExit(struct hiutResult* result)
+{
+  int                numseg = 3;
+  struct npa_segment segments[numseg];
+
+  npa_getSegmentRTTs(&result->trace,
+                     segments,
+                     numseg);
+
+  for (int i = 0; i < numseg; i++)
+  {
+    printf("Segment %i STT (%i->%i): %i.%ims \n",
+           i+1,
+           segments[i].start,
+           segments[i].stop,
+           segments[i].stt / 1000,
+           segments[i].stt % 1000);
+  }
+
+  printTimeSpent(result->wait_ms);
+
+
+
   close(sockfd);
   exit(0);
 
@@ -241,7 +271,7 @@ void
 StunStatusCallBack(void*               userCtx,
                    StunCallBackData_T* stunCbData)
 {
-  //char               addr[SOCKADDR_MAX_STRLEN];
+  /* char               addr[SOCKADDR_MAX_STRLEN]; */
   struct hiutResult* result = (struct hiutResult*)userCtx;
 
   if (!result->pathElement[stunCbData->ttl].gotAnswer)
@@ -313,7 +343,7 @@ handleStunNoAnswer(struct hiutResult* result)
   }
   else
   {
-    stopAndExit(result->wait_ms);
+    stopAndExit(result);
   }
 }
 
@@ -335,7 +365,11 @@ handleStunRespIcmp(struct hiutResult* result,
                     srcAddr,
                     rtt,
                     retransmits);
-    stopAndExit(result->wait_ms);
+    npa_addHop(&result->trace,
+               ttl,
+               srcAddr,
+               rtt);
+    stopAndExit(result);
   }
 
   /* printf("Type: %i\n", ICMPtype); */
@@ -350,6 +384,11 @@ handleStunRespIcmp(struct hiutResult* result,
                       srcAddr,
                       rtt,
                       retransmits);
+
+      npa_addHop(&result->trace,
+                 ttl,
+                 srcAddr,
+                 rtt);
 
       result->currentTTL++;
       stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
@@ -378,8 +417,12 @@ handleStunRespIcmp(struct hiutResult* result,
                     srcAddr,
                     rtt,
                     retransmits);
+    npa_addHop(&result->trace,
+               ttl,
+               srcAddr,
+               rtt);
 
-    stopAndExit(result->wait_ms);
+    stopAndExit(result);
   }
   else
   {
@@ -390,8 +433,8 @@ handleStunRespIcmp(struct hiutResult* result,
 static void*
 tickStun(void* ptr)
 {
-  struct timespec timer;
-  struct timespec remaining;
+  struct timespec   timer;
+  struct timespec   remaining;
   STUN_CLIENT_DATA* clientData = (STUN_CLIENT_DATA*)ptr;
 
   timer.tv_sec  = 0;
@@ -591,8 +634,8 @@ main(int   argc,
 
   struct trace_config config;
   int                 c;
-  //int                 digit_optind = 0;
-  int                 i;
+  /* int                 digit_optind = 0; */
+  int i;
   /* set config to default values */
   strncpy(config.interface, "default", 7);
   config.port      = 3478;
@@ -624,7 +667,7 @@ main(int   argc,
   while ( ( c = getopt_long(argc, argv, "hvi:p:j:m:M:w:",
                             long_options, &option_index) ) != -1 )
   {
-    //int this_option_optind = optind ? optind : 1;
+    /* int this_option_optind = optind ? optind : 1; */
     switch (c)
     {
 
