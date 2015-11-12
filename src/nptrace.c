@@ -185,27 +185,31 @@ printTimeSpent(uint32_t wait)
   }
 }
 
-
 void
-stopAndExit(struct hiutResult* result)
+printSegmentAnalytics(const struct npa_trace* trace)
 {
   int                numseg = 3;
   struct npa_segment segments[numseg];
 
-  npa_getSegmentRTTs(&result->trace,
+  npa_getSegmentRTTs( trace,
                      segments,
                      numseg);
 
   for (int i = 0; i < numseg; i++)
   {
     printf("Segment %i STT (%i->%i): %i.%ims \n",
-           i+1,
+           i + 1,
            segments[i].start,
            segments[i].stop,
            segments[i].stt / 1000,
            segments[i].stt % 1000);
   }
+}
 
+void
+stopAndExit(struct hiutResult* result)
+{
+  printSegmentAnalytics(&result->trace);
   printTimeSpent(result->wait_ms);
 
 
