@@ -64,9 +64,10 @@ struct trace_config {
   char                    interface[10];
   uint16_t                port;
   uint16_t                paralell;
-  uint16_t                max_ttl;
-  uint16_t                start_ttl;
+  int32_t                 max_ttl;
+  int32_t                 start_ttl;
   uint32_t                wait_ms;
+  uint32_t                max_recuring;
   struct sockaddr_storage remoteAddr;
   struct sockaddr_storage localAddr;
 };
@@ -190,11 +191,9 @@ printSegmentAnalytics(const struct npa_trace* trace)
 {
   int                numseg = 3;
   struct npa_segment segments[numseg];
-
-  npa_getSegmentRTTs( trace,
+    npa_getSegmentRTTs(trace,
                      segments,
                      numseg);
-
   for (int i = 0; i < numseg; i++)
   {
     printf("Segment %i STT (%i->%i): %i.%ims \n",
@@ -209,14 +208,45 @@ printSegmentAnalytics(const struct npa_trace* trace)
 void
 stopAndExit(struct hiutResult* result)
 {
+
+
+  if (result->num_traces < result->max_recuring)
+  {
+    printf("Finished Trace %i of %i\n", result->num_traces,
+           result->max_recuring);
+
+    for(int i=0;i<MAX_TTL;i++){
+      result->pathElement[i].gotAnswer = false;
+    }
+
+    result->currentTTL = 1;
+    stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId, rand(), 1);
+
+    StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
+                                     result,
+                                     (struct sockaddr*)&result->remoteAddr,
+                                     (struct sockaddr*)&result->localAddr,
+                                     false,
+                                     result->username,
+                                     result->password,
+                                     result->currentTTL,
+                                     result->ttlInfo[result->currentTTL].stunMsgId,
+                                     sockfd,
+                                     sendPacket,
+                                     StunStatusCallBack,
+                                     NULL );
+
+
+
+}
+else
+{
   printSegmentAnalytics(&result->trace);
   printTimeSpent(result->wait_ms);
 
-
-
   close(sockfd);
   exit(0);
-
+}
 }
 
 
@@ -278,15 +308,12 @@ StunStatusCallBack(void*               userCtx,
   /* char               addr[SOCKADDR_MAX_STRLEN]; */
   struct hiutResult* result = (struct hiutResult*)userCtx;
 
-  if (!result->pathElement[stunCbData->ttl].gotAnswer)
+  if (result->pathElement[stunCbData->ttl].gotAnswer)
   {
-    result->pathElement[stunCbData->ttl].gotAnswer = true;
-  }
-  else
-  {
+    printf("Got his one already! Ignorin\n");
     return;
   }
-
+  result->pathElement[stunCbData->ttl].gotAnswer=true;
   switch (stunCbData->stunResult)
   {
   case StunResult_BindOk:
@@ -298,7 +325,7 @@ StunStatusCallBack(void*               userCtx,
                                stunCbData->retransmits );
     break;
   case StunResult_ICMPResp:
-    handleStunRespIcmp( (struct hiutResult*)userCtx,
+      handleStunRespIcmp( (struct hiutResult*)userCtx,
                         stunCbData->ICMPtype,
                         stunCbData->ttl,
                         (struct sockaddr*)&stunCbData->srcAddr,
@@ -347,6 +374,7 @@ handleStunNoAnswer(struct hiutResult* result)
   }
   else
   {
+    printf("BBBB\n");
     stopAndExit(result);
   }
 }
@@ -361,7 +389,7 @@ handleStunRespIcmp(struct hiutResult* result,
 {
 
 
-  if (ttl >= (int)result->user_max_ttl)
+  if (ttl >= result->user_max_ttl)
   {
     printResultLine(out_format,
                     true,
@@ -369,10 +397,12 @@ handleStunRespIcmp(struct hiutResult* result,
                     srcAddr,
                     rtt,
                     retransmits);
+
     npa_addHop(&result->trace,
                ttl,
                srcAddr,
                rtt);
+
     stopAndExit(result);
   }
 
@@ -388,7 +418,6 @@ handleStunRespIcmp(struct hiutResult* result,
                       srcAddr,
                       rtt,
                       retransmits);
-
       npa_addHop(&result->trace,
                  ttl,
                  srcAddr,
@@ -415,18 +444,34 @@ handleStunRespIcmp(struct hiutResult* result,
   else if ( (ICMPtype == 3) && (srcAddr->sa_family == AF_INET) )
   {
     /*Got port unreachable. We can stop now*/
-    printResultLine(out_format,
-                    true,
-                    ttl,
-                    srcAddr,
-                    rtt,
-                    retransmits);
-    npa_addHop(&result->trace,
-               ttl,
-               srcAddr,
-               rtt);
 
-    stopAndExit(result);
+    if (result->path_max_ttl >= ttl)
+    {
+      printResultLine(out_format,
+                      true,
+                      ttl,
+                      srcAddr,
+                      rtt,
+                      retransmits);
+
+      npa_addHop(&result->trace,
+                 ttl,
+                 srcAddr,
+                 rtt);
+
+        printf("Setting max TTL for path (%i)\n", ttl);
+      result->path_max_ttl = ttl;
+      /* cancel any outstanding transactions */
+      for (int i = ttl+1; i <= result->currentTTL; i++)
+      {
+        printf("Canceling transaction (%i)\n", i);
+        StunClient_cancelBindingTransaction( (STUN_CLIENT_DATA*)result->stunCtx,
+                                             result->ttlInfo[i].stunMsgId );
+      }
+
+      stopAndExit(result);
+      result->num_traces++;
+    }
   }
   else
   {
@@ -437,8 +482,8 @@ handleStunRespIcmp(struct hiutResult* result,
 static void*
 tickStun(void* ptr)
 {
-  struct timespec   timer;
-  struct timespec   remaining;
+  struct timespec timer;
+  struct timespec remaining;
   STUN_CLIENT_DATA* clientData = (STUN_CLIENT_DATA*)ptr;
 
   timer.tv_sec  = 0;
@@ -459,9 +504,9 @@ stunHandler(struct socketConfig* config,
             unsigned char*       buf,
             int                  buflen)
 {
-  StunMessage       stunResponse;
+  StunMessage stunResponse;
   STUN_CLIENT_DATA* clientData = (STUN_CLIENT_DATA*)cb;
-  char              realm[STUN_MSG_MAX_REALM_LENGTH];
+  char realm[STUN_MSG_MAX_REALM_LENGTH];
 
   if ( stunlib_DecodeMessage(buf, buflen, &stunResponse, NULL, NULL) )
   {
@@ -509,7 +554,7 @@ dataHandler(struct socketConfig* config,
 {
   struct hiutResult*      result;
   struct sockaddr_storage dst_addr;
-  char                    dst_str[INET6_ADDRSTRLEN];
+  char dst_str[INET6_ADDRSTRLEN];
 
   int n = sizeof(rcv_message);
 
@@ -556,7 +601,6 @@ dataHandler(struct socketConfig* config,
             return;
           }
         }
-
         StunClient_HandleICMP( (STUN_CLIENT_DATA*)result->stunCtx,
                                result->ttlInfo[ttl].stunMsgId,
                                fromAddr,
@@ -571,9 +615,9 @@ dataHandler(struct socketConfig* config,
     }
     else
     {
-      int32_t           ttl_v6;
-      uint16_t          paylen;
-      uint32_t          stunlen;
+      int32_t ttl_v6;
+      uint16_t paylen;
+      uint32_t stunlen;
       struct ip6_hdr*   inner_ip_hdr;
       struct icmp6_hdr* icmp_hdr;
       icmp_hdr     = (struct icmp6_hdr*) &rcv_message;
@@ -617,8 +661,10 @@ printUsage()
   printf("  -m [ttl], --max_ttl [ttl]     Max value for TTL\n");
   printf("  -M [ttl], --start_ttl [ttl]   Start at ttl value\n");
   printf("  -w [ms], --waittime [ms]      Wait ms for ICMP response\n");
+  printf(
+    "  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
   printf("  -x, --json                    Output in JSON format\n");
-  printf("  -c, --csv                    Output in JSON format\n");
+  printf("  -c, --csv                     Output in JSON format\n");
   printf("  -v, --version                 Prints version number\n");
   printf("  -h, --help                    Print help text\n");
   exit(0);
@@ -629,25 +675,26 @@ int
 main(int   argc,
      char* argv[])
 {
-  pthread_t         stunTickThread;
-  pthread_t         socketListenThread;
+  pthread_t stunTickThread;
+  pthread_t socketListenThread;
   struct hiutResult result;
 
   STUN_CLIENT_DATA* clientData;
-  char              addrStr[SOCKADDR_MAX_STRLEN];
+  char addrStr[SOCKADDR_MAX_STRLEN];
 
   struct trace_config config;
-  int                 c;
+  int c;
   /* int                 digit_optind = 0; */
   int i;
   /* set config to default values */
   strncpy(config.interface, "default", 7);
-  config.port      = 3478;
-  config.paralell  = 4;
-  config.max_ttl   = 32;
-  config.start_ttl = 1;
-  config.max_ttl   = MAX_TTL;
-  config.wait_ms   = 0;
+  config.port         = 3478;
+  config.paralell     = 4;
+  config.max_ttl      = 32;
+  config.start_ttl    = 1;
+  config.max_ttl      = 255;
+  config.wait_ms      = 0;
+  config.max_recuring = 1;
 
   static struct option long_options[] = {
     {"interface", 1, 0, 'i'},
@@ -656,6 +703,7 @@ main(int   argc,
     {"max_ttl", 1, 0, 'm'},
     {"start_ttl", 1, 0, 'M'},
     {"waittime", 1, 0, 'w'},
+    {"recuring", 1, 0, 'r'},
     {"json", 0, 0, 'x'},
     {"csv", 0, 0, 'c'},
     {"help", 0, 0, 'h'},
@@ -668,7 +716,7 @@ main(int   argc,
     exit(0);
   }
   int option_index = 0;
-  while ( ( c = getopt_long(argc, argv, "hvi:p:j:m:M:w:",
+  while ( ( c = getopt_long(argc, argv, "hvi:p:j:m:M:w:r:",
                             long_options, &option_index) ) != -1 )
   {
     /* int this_option_optind = optind ? optind : 1; */
@@ -698,6 +746,9 @@ main(int   argc,
       break;
     case 'w':
       config.wait_ms = atoi(optarg);
+      break;
+    case 'r':
+      config.max_recuring = atoi(optarg);
       break;
     case 'h':
       printUsage();
@@ -791,10 +842,12 @@ main(int   argc,
   result.user_max_ttl   = config.max_ttl;
   result.user_start_ttl = config.start_ttl;
   result.wait_ms        = config.wait_ms;
+  result.max_recuring   = config.max_recuring;
+  result.path_max_ttl   = 255;
+  result.num_traces     = 1;
 
-
+npa_init(&result.trace);
   srand( time(NULL) ); /* Initialise the random seed. */
-
 
   /* *starting here.. */
   if (out_format == json)

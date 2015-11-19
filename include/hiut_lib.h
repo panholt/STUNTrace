@@ -19,9 +19,10 @@ struct hiutPathElement{
 
 struct hiutResult{
     void *stunCtx;
-    uint32_t currentTTL;
-    uint32_t user_start_ttl;
-    uint32_t user_max_ttl;
+    int32_t currentTTL;
+    int32_t user_start_ttl;
+    int32_t user_max_ttl;
+    int32_t path_max_ttl;  /*got port unreachable or STUN response */
     uint32_t wait_ms;
     struct sockaddr_storage localAddr;
     struct sockaddr_storage remoteAddr;
@@ -33,6 +34,11 @@ struct hiutResult{
     struct hiutPathElement pathElement[MAX_TTL];
     struct hiutTTLinfo ttlInfo[MAX_TTL];
     struct npa_trace trace;
+
+    /* Recurring traces*/
+    int32_t max_recuring;
+    int32_t num_traces;
+
 };
 
 
