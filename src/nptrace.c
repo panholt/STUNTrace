@@ -220,25 +220,25 @@ stopAndExit(struct hiutResult* result)
       result->pathElement[i].gotAnswer = false;
     }
 
-    result->currentTTL = 1;
-    stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId, rand(), 1);
-
-    StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                               result,
-                               (struct sockaddr*)&result->remoteAddr,
-                               (struct sockaddr*)&result->localAddr,
-                               false,
-                               result->username,
-                               result->password,
-                               result->currentTTL,
-                               result->ttlInfo[result->currentTTL].stunMsgId,
-                               sockfd,
-                               sendPacket,
-                               StunStatusCallBack,
-                               NULL );
-
-
-
+    for (int i = 1; i < result->user_paralell_traces + 1; i++)
+    {
+      result->currentTTL = result->user_start_ttl - 1 + i;
+      stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId, rand(),
+                       i);
+      StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
+                                 result,
+                                 (struct sockaddr*)&result->remoteAddr,
+                                 (struct sockaddr*)&result->localAddr,
+                                 false,
+                                 result->username,
+                                 result->password,
+                                 result->currentTTL,
+                                 result->ttlInfo[result->currentTTL].stunMsgId,
+                                 sockfd,
+                                 sendPacket,
+                                 StunStatusCallBack,
+                                 NULL );
+    }
   }
   else
   {
@@ -337,7 +337,7 @@ StunStatusCallBack(void*               userCtx,
     handleStunNoAnswer( (struct hiutResult*)userCtx );
     break;
   default:
-    printf("Should not happen\n");
+    printf("Should not happen (Probably a cancel OK)\n");
   }
 }
 
@@ -837,14 +837,15 @@ main(int   argc,
                  (struct sockaddr*)&config.localAddr );
   sockaddr_copy( (struct sockaddr*)&result.remoteAddr,
                  (struct sockaddr*)&config.remoteAddr );
-  result.username       = username;
-  result.password       = password;
-  result.user_max_ttl   = config.max_ttl;
-  result.user_start_ttl = config.start_ttl;
-  result.wait_ms        = config.wait_ms;
-  result.max_recuring   = config.max_recuring;
-  result.path_max_ttl   = 255;
-  result.num_traces     = 1;
+  result.username             = username;
+  result.password             = password;
+  result.user_max_ttl         = config.max_ttl;
+  result.user_start_ttl       = config.start_ttl;
+  result.wait_ms              = config.wait_ms;
+  result.max_recuring         = config.max_recuring;
+  result.user_paralell_traces = config.paralell;
+  result.path_max_ttl         = 255;
+  result.num_traces           = 1;
 
   npa_init(&result.trace);
   srand( time(NULL) ); /* Initialise the random seed. */

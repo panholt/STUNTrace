@@ -22,6 +22,7 @@ struct hiutResult {
   int32_t                 currentTTL;
   int32_t                 user_start_ttl;
   int32_t                 user_max_ttl;
+  int32_t                 user_paralell_traces;
   int32_t                 path_max_ttl; /*got port unreachable or STUN response
                                          **/
   uint32_t                wait_ms;
