@@ -5,39 +5,40 @@
 
 #include <stunlib.h>
 
-struct hiutTTLinfo{
-    //int ttl;
-    //int messageSize;
-    StunMsgId stunMsgId;
+struct hiutTTLinfo {
+  /* int ttl; */
+  /* int messageSize; */
+  StunMsgId stunMsgId;
 
 };
 
-struct hiutPathElement{
-    bool   gotAnswer;
-    struct sockaddr_storage addr;
+struct hiutPathElement {
+  bool                    gotAnswer;
+  struct sockaddr_storage addr;
 };
 
-struct hiutResult{
-    void *stunCtx;
-    int32_t currentTTL;
-    int32_t user_start_ttl;
-    int32_t user_max_ttl;
-    int32_t path_max_ttl;  /*got port unreachable or STUN response */
-    uint32_t wait_ms;
-    struct sockaddr_storage localAddr;
-    struct sockaddr_storage remoteAddr;
-    /* STUN Username and password */
-    char *username;
-    char *password;
-    /* Initial Length of first STUN packet (TTL=1) */
-    uint32_t stunLen;
-    struct hiutPathElement pathElement[MAX_TTL];
-    struct hiutTTLinfo ttlInfo[MAX_TTL];
-    struct npa_trace trace;
+struct hiutResult {
+  void*                   stunCtx;
+  int32_t                 currentTTL;
+  int32_t                 user_start_ttl;
+  int32_t                 user_max_ttl;
+  int32_t                 path_max_ttl; /*got port unreachable or STUN response
+                                         **/
+  uint32_t                wait_ms;
+  struct sockaddr_storage localAddr;
+  struct sockaddr_storage remoteAddr;
+  /* STUN Username and password */
+  char* username;
+  char* password;
+  /* Initial Length of first STUN packet (TTL=1) */
+  uint32_t               stunLen;
+  struct hiutPathElement pathElement[MAX_TTL];
+  struct hiutTTLinfo     ttlInfo[MAX_TTL];
+  struct npa_trace       trace;
 
-    /* Recurring traces*/
-    int32_t max_recuring;
-    int32_t num_traces;
+  /* Recurring traces*/
+  int32_t max_recuring;
+  int32_t num_traces;
 
 };
 

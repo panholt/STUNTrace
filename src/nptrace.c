@@ -191,7 +191,7 @@ printSegmentAnalytics(const struct npa_trace* trace)
 {
   int                numseg = 3;
   struct npa_segment segments[numseg];
-    npa_getSegmentRTTs(trace,
+  npa_getSegmentRTTs(trace,
                      segments,
                      numseg);
   for (int i = 0; i < numseg; i++)
@@ -215,7 +215,8 @@ stopAndExit(struct hiutResult* result)
     printf("Finished Trace %i of %i\n", result->num_traces,
            result->max_recuring);
 
-    for(int i=0;i<MAX_TTL;i++){
+    for (int i = 0; i < MAX_TTL; i++)
+    {
       result->pathElement[i].gotAnswer = false;
     }
 
@@ -223,30 +224,30 @@ stopAndExit(struct hiutResult* result)
     stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId, rand(), 1);
 
     StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                                     result,
-                                     (struct sockaddr*)&result->remoteAddr,
-                                     (struct sockaddr*)&result->localAddr,
-                                     false,
-                                     result->username,
-                                     result->password,
-                                     result->currentTTL,
-                                     result->ttlInfo[result->currentTTL].stunMsgId,
-                                     sockfd,
-                                     sendPacket,
-                                     StunStatusCallBack,
-                                     NULL );
+                               result,
+                               (struct sockaddr*)&result->remoteAddr,
+                               (struct sockaddr*)&result->localAddr,
+                               false,
+                               result->username,
+                               result->password,
+                               result->currentTTL,
+                               result->ttlInfo[result->currentTTL].stunMsgId,
+                               sockfd,
+                               sendPacket,
+                               StunStatusCallBack,
+                               NULL );
 
 
 
-}
-else
-{
-  printSegmentAnalytics(&result->trace);
-  printTimeSpent(result->wait_ms);
+  }
+  else
+  {
+    printSegmentAnalytics(&result->trace);
+    printTimeSpent(result->wait_ms);
 
-  close(sockfd);
-  exit(0);
-}
+    close(sockfd);
+    exit(0);
+  }
 }
 
 
@@ -313,7 +314,7 @@ StunStatusCallBack(void*               userCtx,
     printf("Got his one already! Ignorin\n");
     return;
   }
-  result->pathElement[stunCbData->ttl].gotAnswer=true;
+  result->pathElement[stunCbData->ttl].gotAnswer = true;
   switch (stunCbData->stunResult)
   {
   case StunResult_BindOk:
@@ -325,7 +326,7 @@ StunStatusCallBack(void*               userCtx,
                                stunCbData->retransmits );
     break;
   case StunResult_ICMPResp:
-      handleStunRespIcmp( (struct hiutResult*)userCtx,
+    handleStunRespIcmp( (struct hiutResult*)userCtx,
                         stunCbData->ICMPtype,
                         stunCbData->ttl,
                         (struct sockaddr*)&stunCbData->srcAddr,
@@ -459,10 +460,9 @@ handleStunRespIcmp(struct hiutResult* result,
                  srcAddr,
                  rtt);
 
-        printf("Setting max TTL for path (%i)\n", ttl);
       result->path_max_ttl = ttl;
       /* cancel any outstanding transactions */
-      for (int i = ttl+1; i <= result->currentTTL; i++)
+      for (int i = ttl + 1; i <= result->currentTTL; i++)
       {
         printf("Canceling transaction (%i)\n", i);
         StunClient_cancelBindingTransaction( (STUN_CLIENT_DATA*)result->stunCtx,
@@ -482,8 +482,8 @@ handleStunRespIcmp(struct hiutResult* result,
 static void*
 tickStun(void* ptr)
 {
-  struct timespec timer;
-  struct timespec remaining;
+  struct timespec   timer;
+  struct timespec   remaining;
   STUN_CLIENT_DATA* clientData = (STUN_CLIENT_DATA*)ptr;
 
   timer.tv_sec  = 0;
@@ -504,9 +504,9 @@ stunHandler(struct socketConfig* config,
             unsigned char*       buf,
             int                  buflen)
 {
-  StunMessage stunResponse;
+  StunMessage       stunResponse;
   STUN_CLIENT_DATA* clientData = (STUN_CLIENT_DATA*)cb;
-  char realm[STUN_MSG_MAX_REALM_LENGTH];
+  char              realm[STUN_MSG_MAX_REALM_LENGTH];
 
   if ( stunlib_DecodeMessage(buf, buflen, &stunResponse, NULL, NULL) )
   {
@@ -554,7 +554,7 @@ dataHandler(struct socketConfig* config,
 {
   struct hiutResult*      result;
   struct sockaddr_storage dst_addr;
-  char dst_str[INET6_ADDRSTRLEN];
+  char                    dst_str[INET6_ADDRSTRLEN];
 
   int n = sizeof(rcv_message);
 
@@ -615,9 +615,9 @@ dataHandler(struct socketConfig* config,
     }
     else
     {
-      int32_t ttl_v6;
-      uint16_t paylen;
-      uint32_t stunlen;
+      int32_t           ttl_v6;
+      uint16_t          paylen;
+      uint32_t          stunlen;
       struct ip6_hdr*   inner_ip_hdr;
       struct icmp6_hdr* icmp_hdr;
       icmp_hdr     = (struct icmp6_hdr*) &rcv_message;
@@ -675,15 +675,15 @@ int
 main(int   argc,
      char* argv[])
 {
-  pthread_t stunTickThread;
-  pthread_t socketListenThread;
+  pthread_t         stunTickThread;
+  pthread_t         socketListenThread;
   struct hiutResult result;
 
   STUN_CLIENT_DATA* clientData;
-  char addrStr[SOCKADDR_MAX_STRLEN];
+  char              addrStr[SOCKADDR_MAX_STRLEN];
 
   struct trace_config config;
-  int c;
+  int                 c;
   /* int                 digit_optind = 0; */
   int i;
   /* set config to default values */
@@ -846,7 +846,7 @@ main(int   argc,
   result.path_max_ttl   = 255;
   result.num_traces     = 1;
 
-npa_init(&result.trace);
+  npa_init(&result.trace);
   srand( time(NULL) ); /* Initialise the random seed. */
 
   /* *starting here.. */
