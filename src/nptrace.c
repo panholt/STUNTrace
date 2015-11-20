@@ -194,6 +194,11 @@ printSegmentAnalytics(const struct npa_trace* trace)
   npa_getSegmentRTTs(trace,
                      segments,
                      numseg);
+
+    printf( "------- Path Stats ------\n");
+    printf( "hops: %i, samples: %i \n",
+             npa_getNumberOfHops(trace),
+             npa_getNumberOfSamples(trace) );
   for (int i = 0; i < numseg; i++)
   {
     printf("Segment %i STT (%i->%i): %i.%ims \n",
@@ -281,7 +286,11 @@ handleStunRespSucsessfull(struct hiutResult* result,
   }
   if (result->currentTTL < result->user_max_ttl)
   {
-    result->currentTTL++;
+    while (result->pathElement[result->currentTTL].inactive &&
+           result->currentTTL < result->path_max_ttl)
+    {
+      result->currentTTL++;
+    }
     stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
                      rand(), result->currentTTL);
     StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
@@ -311,10 +320,11 @@ StunStatusCallBack(void*               userCtx,
 
   if (result->pathElement[stunCbData->ttl].gotAnswer)
   {
-    printf("Got his one already! Ignorin\n");
+    printf("Got his one already! Ignoring (%i)\n", stunCbData->ttl);
     return;
   }
   result->pathElement[stunCbData->ttl].gotAnswer = true;
+
   switch (stunCbData->stunResult)
   {
   case StunResult_BindOk:
@@ -353,9 +363,15 @@ handleStunNoAnswer(struct hiutResult* result)
   {
     printf("*,?\n*,");
   }
-  if (result->currentTTL < result->user_max_ttl)
+  if ( (result->currentTTL < result->user_max_ttl) &&
+       (result->currentTTL < result->path_max_ttl) )
   {
-    result->currentTTL++;
+    result->pathElement[result->currentTTL].inactive = true;
+    while (result->pathElement[result->currentTTL].inactive &&
+           result->currentTTL < result->path_max_ttl)
+    {
+      result->currentTTL++;
+    }
     stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
                      rand(), result->currentTTL);
     StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
@@ -425,21 +441,31 @@ handleStunRespIcmp(struct hiutResult* result,
                  rtt);
 
       result->currentTTL++;
-      stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
-                       rand(), result->currentTTL);
-      StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                                 result,
-                                 (struct sockaddr*)&result->remoteAddr,
-                                 (struct sockaddr*)&result->localAddr,
-                                 false,
-                                 result->username,
-                                 result->password,
-                                 result->currentTTL,
-                                 result->ttlInfo[result->currentTTL].stunMsgId,
-                                 sockfd,
-                                 sendPacket,
-                                 StunStatusCallBack,
-                                 NULL );
+
+      while (result->pathElement[result->currentTTL].inactive &&
+             result->currentTTL < result->path_max_ttl)
+      {
+        result->currentTTL++;
+      }
+
+      if (result->currentTTL <= result->path_max_ttl)
+      {
+        stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
+                         rand(), result->currentTTL);
+        StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
+                                   result,
+                                   (struct sockaddr*)&result->remoteAddr,
+                                   (struct sockaddr*)&result->localAddr,
+                                   false,
+                                   result->username,
+                                   result->password,
+                                   result->currentTTL,
+                                   result->ttlInfo[result->currentTTL].stunMsgId,
+                                   sockfd,
+                                   sendPacket,
+                                   StunStatusCallBack,
+                                   NULL );
+      }
     }
   }
   else if ( (ICMPtype == 3) && (srcAddr->sa_family == AF_INET) )

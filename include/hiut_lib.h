@@ -14,6 +14,7 @@ struct hiutTTLinfo {
 
 struct hiutPathElement {
   bool                    gotAnswer;
+  bool                    inactive;
   struct sockaddr_storage addr;
 };
 
