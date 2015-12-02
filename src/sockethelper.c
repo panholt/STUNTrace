@@ -228,7 +228,7 @@ sendPacket(int                    sockHandle,
   uint32_t sock_ttl;
   uint32_t addr_len;
   (void) useRelay;
-
+  
   if (dstAddr->sa_family == AF_INET)
   {
     addr_len = sizeof(struct sockaddr_in);

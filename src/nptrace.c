@@ -28,6 +28,7 @@
 
 #include <stunlib.h>
 #include <stunclient.h>
+#include <stuntrace.h>
 #include <stun_intern.h>
 
 #include <npalib.h>
@@ -35,12 +36,12 @@
 #include "utils.h"
 #include "iphelper.h"
 #include "sockethelper.h"
-#include "hiut_lib.h"
+//#include "hiut_lib.h"
 
 int                        sockfd;
 int                        icmpSocket;
 static struct listenConfig listenConfig;
-static char                rcv_message[MAXBUFLEN];
+static unsigned char       rcv_message[MAXBUFLEN];
 
 struct timeval start;
 struct timeval stop;
@@ -72,78 +73,6 @@ struct trace_config {
   struct sockaddr_storage localAddr;
 };
 
-void
-handleStunRespIcmp(struct hiutResult* result,
-                   int                ICMPtype,
-                   int                ttl,
-                   struct sockaddr*   srcAddr,
-                   int                rtt,
-                   int                retransmits);
-
-void
-handleStunNoAnswer(struct hiutResult* result);
-void
-StunStatusCallBack(void*               userCtx,
-                   StunCallBackData_T* stunCbData);
-
-void
-printResultLine(OUTPUT_FORMAT    format,
-                bool             last,
-                int              ttl,
-                struct sockaddr* srcAddr,
-                int              rtt,
-                int              retransmits)
-{
-  char addr[SOCKADDR_MAX_STRLEN];
-
-  if (format == txt)
-  {
-    printf(" %i %s %i.%ims (%i)", ttl,
-           sockaddr_toString(srcAddr,
-                             addr,
-                             sizeof(addr),
-                             false),
-           rtt / 1000, rtt % 1000,
-           retransmits);
-
-      printf("\n");
-  }
-  else if (format == json)
-  {
-      printf( "           {\n");
-      printf( "               \"hop\" : \"%i\",\n", ttl);
-      printf( "               \"ip\"  : \"%s\",\n", sockaddr_toString(srcAddr,
-                                                                    addr,
-                                                                    sizeof(addr),
-                                                                    false) );
-      printf("               \"rtt\" : \"%i.%i\",\n",  rtt / 1000, rtt % 1000);
-      printf("               \"retrans\" : \"%i\" \n", retransmits);
-      printf("           }");
-    if (!last)
-    {
-      printf(", \n");
-    }
-    else
-    {
-      printf("\n");
-    }
-  }
-  else if (format == csv)
-  {
-      printf("%s,%i\n",sockaddr_toString(srcAddr,
-                                       addr,
-                                       sizeof(addr),
-                                       false),
-           ttl);
-      printf( "%s,",sockaddr_toString(srcAddr,
-                                    addr,
-                                    sizeof(addr),
-                                    false) );
-
-  }
-
-
-}
 
 void
 printTimeSpent(uint32_t wait)
@@ -163,27 +92,14 @@ printTimeSpent(uint32_t wait)
   time =
     (stop.tv_sec * 1000000 +
      stop.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec);
-  if (out_format == json)
+
+    printf("Time spent: %i.%ims", time / 1000, time % 1000);
+  if (wait > 0)
   {
-      printf("        ],\n");
-      printf("    \"time\" : \"%i.%i\"\n", time / 1000, time % 1000);
-      printf("   }\n");
-      printf("}\n");
+    printf(" (wait: %ims)",       wait);
   }
-  else if (out_format == txt)
-  {
-      printf("Time spent: %i.%ims", time / 1000, time % 1000);
-    if (wait > 0)
-    {
-      printf(" (wait: %ims)",       wait);
-    }
-      printf("\n");
-  }
-  else if (out_format == csv)
-  {
-    /* printf("slutt"); */
-      printf("\n");
-  }
+    printf("\n");
+
 }
 
 void
@@ -195,10 +111,12 @@ printSegmentAnalytics(const struct npa_trace* trace)
                      segments,
                      numseg);
 
-    printf( "------- Path Stats ------\n");
-    printf( "hops: %i, samples: %i \n",
-             npa_getNumberOfHops(trace),
-             npa_getNumberOfSamples(trace) );
+  printf( "------- Path Stats ------\n");
+  printf( "hops: %i, samples: %i, inactive: %i\n",
+          npa_getNumberOfHops(trace),
+          npa_getNumberOfSamples(trace),
+          npa_getNumberOfInactiveHops(trace) );
+
   for (int i = 0; i < numseg; i++)
   {
     printf("Segment %i STT (%i->%i): %i.%ims \n",
@@ -211,298 +129,48 @@ printSegmentAnalytics(const struct npa_trace* trace)
 }
 
 void
-stopAndExit(struct hiutResult* result)
+StunTraceCallBack(void*                    userCtx,
+                  StunTraceCallBackData_T* data)
 {
 
-
-  if (result->num_traces < result->max_recuring)
+  struct npa_trace* trace = (struct npa_trace*) userCtx;
+  char addr[SOCKADDR_MAX_STRLEN];
+  if (data->nodeAddr == NULL)
   {
-    printf("Finished Trace %i of %i\n", result->num_traces,
-           result->max_recuring);
-
-    for (int i = 0; i < MAX_TTL; i++)
-    {
-      result->pathElement[i].gotAnswer = false;
-    }
-
-    for (int i = 1; i < result->user_paralell_traces + 1; i++)
-    {
-      result->currentTTL = result->user_start_ttl - 1 + i;
-      stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId, rand(),
-                       i);
-      StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                                 result,
-                                 (struct sockaddr*)&result->remoteAddr,
-                                 (struct sockaddr*)&result->localAddr,
-                                 false,
-                                 result->username,
-                                 result->password,
-                                 result->currentTTL,
-                                 result->ttlInfo[result->currentTTL].stunMsgId,
-                                 sockfd,
-                                 sendPacket,
-                                 StunStatusCallBack,
-                                 NULL );
-    }
-  }
-  else
-  {
-    printSegmentAnalytics(&result->trace);
-    printTimeSpent(result->wait_ms);
-
-    close(sockfd);
-    exit(0);
-  }
-}
-
-
-void
-handleStunRespSucsessfull(struct hiutResult* result,
-                          int                ttl,
-                          struct sockaddr*   srcAddr,
-                          struct sockaddr*   rflxAddr,
-                          int                rtt,
-                          int                retransmits)
-{
-  /* char addr[SOCKADDR_MAX_STRLEN]; */
-  (void) rflxAddr;
-  printResultLine(out_format,
-                  true,
-                  ttl,
-                  srcAddr,
-                  rtt,
-                  retransmits);
-
-  /* printf("   RFLX addr: '%s'\n", */
-  /*       sockaddr_toString(rflxAddr, */
-  /*                         addr, */
-  /*                         sizeof(addr), */
-  /*                         true)); */
-
-  /*Got STUN response. We can stop now*/
-  if ( sockaddr_sameAddr( (struct sockaddr*)&result->remoteAddr,srcAddr ) )
-  {
-    stopAndExit(0);
-  }
-  if (result->currentTTL < result->user_max_ttl)
-  {
-    while (result->pathElement[result->currentTTL].inactive &&
-           result->currentTTL < result->path_max_ttl)
-    {
-      result->currentTTL++;
-    }
-    stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
-                     rand(), result->currentTTL);
-    StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                               result,
-                               (struct sockaddr*)&result->remoteAddr,
-                               (struct sockaddr*)&result->localAddr,
-                               false,
-                               result->username,
-                               result->password,
-                               result->currentTTL,
-                               result->ttlInfo[result->currentTTL].stunMsgId,
-                               sockfd,
-                               sendPacket,
-                               StunStatusCallBack,
-                               NULL );
-  }
-
-}
-
-
-void
-StunStatusCallBack(void*               userCtx,
-                   StunCallBackData_T* stunCbData)
-{
-  /* char               addr[SOCKADDR_MAX_STRLEN]; */
-  struct hiutResult* result = (struct hiutResult*)userCtx;
-
-  if (result->pathElement[stunCbData->ttl].gotAnswer)
-  {
-    printf("Got his one already! Ignoring (%i)\n", stunCbData->ttl);
+    printf(" * \n");
     return;
   }
-  result->pathElement[stunCbData->ttl].gotAnswer = true;
 
-  switch (stunCbData->stunResult)
+  npa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
+  printf(" %i %s %i.%ims (%i)\n", data->hop,
+         sockaddr_toString(data->nodeAddr,
+                           addr,
+                           sizeof(addr),
+                           false),
+         data->rtt / 1000, data->rtt % 1000,
+         data->retransmits);
+
+  if (data->traceEnd)
   {
-  case StunResult_BindOk:
-    handleStunRespSucsessfull( (struct hiutResult*)userCtx,
-                               stunCbData->ttl,
-                               (struct sockaddr*)&stunCbData->srcAddr,
-                               (struct sockaddr*)&stunCbData->rflxAddr,
-                               stunCbData->rtt,
-                               stunCbData->retransmits );
-    break;
-  case StunResult_ICMPResp:
-    handleStunRespIcmp( (struct hiutResult*)userCtx,
-                        stunCbData->ICMPtype,
-                        stunCbData->ttl,
-                        (struct sockaddr*)&stunCbData->srcAddr,
-                        stunCbData->rtt,
-                        stunCbData->retransmits );
-    break;
-  case StunResult_BindFailNoAnswer:
-    handleStunNoAnswer( (struct hiutResult*)userCtx );
-    break;
-  default:
-    printf("Should not happen (Probably a cancel OK)\n");
+    printSegmentAnalytics(trace);
+
+    if(data->done){
+    printTimeSpent(0);
+    exit(0);
+  }
   }
 }
 
 
-void
-handleStunNoAnswer(struct hiutResult* result)
-{
-  if (out_format == txt)
-  {
-    printf(" ? *\n");
-  }
-  else if (out_format == csv)
-  {
-    printf("*,?\n*,");
-  }
-  if ( (result->currentTTL < result->user_max_ttl) &&
-       (result->currentTTL < result->path_max_ttl) )
-  {
-    result->pathElement[result->currentTTL].inactive = true;
-    while (result->pathElement[result->currentTTL].inactive &&
-           result->currentTTL < result->path_max_ttl)
-    {
-      result->currentTTL++;
-    }
-    stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
-                     rand(), result->currentTTL);
-    StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                               result,
-                               (struct sockaddr*)&result->remoteAddr,
-                               (struct sockaddr*)&result->localAddr,
-                               false,
-                               result->username,
-                               result->password,
-                               result->currentTTL,
-                               result->ttlInfo[result->currentTTL].stunMsgId,
-                               sockfd,
-                               sendPacket,
-                               StunStatusCallBack,
-                               NULL );
-
-  }
-  else
-  {
-    printf("BBBB\n");
-    stopAndExit(result);
-  }
-}
 
 void
-handleStunRespIcmp(struct hiutResult* result,
-                   int                ICMPtype,
-                   int                ttl,
-                   struct sockaddr*   srcAddr,
-                   int                rtt,
-                   int                retransmits)
+stundbg(void*              ctx,
+        StunInfoCategory_T category,
+        char*              errStr)
 {
-
-
-  if (ttl >= result->user_max_ttl)
-  {
-    printResultLine(out_format,
-                    true,
-                    ttl,
-                    srcAddr,
-                    rtt,
-                    retransmits);
-
-    npa_addHop(&result->trace,
-               ttl,
-               srcAddr,
-               rtt);
-
-    stopAndExit(result);
-  }
-
-  /* printf("Type: %i\n", ICMPtype); */
-  if ( ( (ICMPtype == 11) && (srcAddr->sa_family == AF_INET) ) ||
-       ( (ICMPtype == 3) && (srcAddr->sa_family == AF_INET6) ) )
-  {
-    if (result->currentTTL < result->user_max_ttl)
-    {
-      printResultLine(out_format,
-                      false,
-                      ttl,
-                      srcAddr,
-                      rtt,
-                      retransmits);
-      npa_addHop(&result->trace,
-                 ttl,
-                 srcAddr,
-                 rtt);
-
-      result->currentTTL++;
-
-      while (result->pathElement[result->currentTTL].inactive &&
-             result->currentTTL < result->path_max_ttl)
-      {
-        result->currentTTL++;
-      }
-
-      if (result->currentTTL <= result->path_max_ttl)
-      {
-        stunlib_createId(&result->ttlInfo[result->currentTTL].stunMsgId,
-                         rand(), result->currentTTL);
-        StunClient_startSTUNTrace( (STUN_CLIENT_DATA*)result->stunCtx,
-                                   result,
-                                   (struct sockaddr*)&result->remoteAddr,
-                                   (struct sockaddr*)&result->localAddr,
-                                   false,
-                                   result->username,
-                                   result->password,
-                                   result->currentTTL,
-                                   result->ttlInfo[result->currentTTL].stunMsgId,
-                                   sockfd,
-                                   sendPacket,
-                                   StunStatusCallBack,
-                                   NULL );
-      }
-    }
-  }
-  else if ( (ICMPtype == 3) && (srcAddr->sa_family == AF_INET) )
-  {
-    /*Got port unreachable. We can stop now*/
-
-    if (result->path_max_ttl >= ttl)
-    {
-      printResultLine(out_format,
-                      true,
-                      ttl,
-                      srcAddr,
-                      rtt,
-                      retransmits);
-
-      npa_addHop(&result->trace,
-                 ttl,
-                 srcAddr,
-                 rtt);
-
-      result->path_max_ttl = ttl;
-      /* cancel any outstanding transactions */
-      for (int i = ttl + 1; i <= result->currentTTL; i++)
-      {
-        printf("Canceling transaction (%i)\n", i);
-        StunClient_cancelBindingTransaction( (STUN_CLIENT_DATA*)result->stunCtx,
-                                             result->ttlInfo[i].stunMsgId );
-      }
-
-      stopAndExit(result);
-      result->num_traces++;
-    }
-  }
-  else
-  {
-    printf("   Some sort of ICMP message. Ignoring\n");
-  }
+  (void) category;
+  (void) ctx;
+  printf("%s\n", errStr);
 }
 
 static void*
@@ -571,19 +239,16 @@ stunHandler(struct socketConfig* config,
   }
 }
 
-
 void
 dataHandler(struct socketConfig* config,
             struct sockaddr*     fromAddr,
             void*                cb,
             unsigned char*       message)
 {
-  struct hiutResult*      result;
-  struct sockaddr_storage dst_addr;
-  char                    dst_str[INET6_ADDRSTRLEN];
-
+  (void)cb;
   int n = sizeof(rcv_message);
 
+  memset(rcv_message, 0, n);
   memcpy(rcv_message, message, n);
   if (n > 0)
   {
@@ -591,80 +256,9 @@ dataHandler(struct socketConfig* config,
   }
   if (config->sockfd == icmpSocket)
   {
-    /* is it a icmp message? At least on the right handle. */
-    result = (struct hiutResult*)cb;
-    if (result->localAddr.ss_family == AF_INET)
-    {
-      struct ip*   ip_packet, * inner_ip_packet;
-      struct icmp* icmp_packet;
-      ip_packet   = (struct ip*) &rcv_message;
-      icmp_packet =
-        (struct icmp*) ( rcv_message + (ip_packet->ip_hl << 2) );
-      inner_ip_packet = &icmp_packet->icmp_ip;
-
-      sockaddr_initFromIPv4String( (struct sockaddr_in*)&dst_addr,
-                                   inet_ntop(AF_INET, &ip_packet->ip_dst,
-                                             dst_str,INET_ADDRSTRLEN) );
-
-      if ( sockaddr_sameAddr( (struct sockaddr*)&dst_addr,
-                              (struct sockaddr*)&result->localAddr ) )
-      {
-        int ttl = (inner_ip_packet->ip_len - result->stunLen - 24) / 4;
-
-        /* Check if the length field in the ICMP header is set to something */
-        /* Todo Fix lengths. */
-        if ( (ntohs(icmp_packet->icmp_id) > 20) &&
-             (ntohs(icmp_packet->icmp_id) < 1024) )
-        {
-          /* Check if it is a STUN packet */
-          if ( stunlib_isStunMsg(message + 56, n - 56) )
-          {
-            stunHandler(config,
-                        fromAddr,
-                        (STUN_CLIENT_DATA*)result->stunCtx,
-                        message + 56,
-                        n - 56);
-            return;
-          }
-        }
-        StunClient_HandleICMP( (STUN_CLIENT_DATA*)result->stunCtx,
-                               result->ttlInfo[ttl].stunMsgId,
-                               fromAddr,
-                               icmp_packet->icmp_type,
-                               ttl );
-
-      }
-      else
-      {
-        printf("Not for me..\n");
-      }
-    }
-    else
-    {
-      int32_t           ttl_v6;
-      uint16_t          paylen;
-      uint32_t          stunlen;
-      struct ip6_hdr*   inner_ip_hdr;
-      struct icmp6_hdr* icmp_hdr;
-      icmp_hdr     = (struct icmp6_hdr*) &rcv_message;
-      inner_ip_hdr = (struct ip6_hdr*)&rcv_message[8];
-
-      paylen  = ntohs(inner_ip_hdr->ip6_plen);
-      stunlen = result->stunLen + 4;
-
-      /*FIX me*/
-      if (icmp_hdr->icmp6_type != 3)
-      {
-        return;
-      }
-
-      ttl_v6 = (paylen - stunlen) / 4;
-      StunClient_HandleICMP( (STUN_CLIENT_DATA*)result->stunCtx,
-                             result->ttlInfo[ttl_v6].stunMsgId,
-                             fromAddr,
-                             icmp_hdr->icmp6_type,
-                             ttl_v6 );
-    }
+    StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
+                           fromAddr,
+                           rcv_message );
   }
 }
 
@@ -701,17 +295,18 @@ int
 main(int   argc,
      char* argv[])
 {
-  pthread_t         stunTickThread;
-  pthread_t         socketListenThread;
-  struct hiutResult result;
+  pthread_t stunTickThread;
+  pthread_t socketListenThread;
 
   STUN_CLIENT_DATA* clientData;
   char              addrStr[SOCKADDR_MAX_STRLEN];
 
+  struct npa_trace trace;
+
+
   struct trace_config config;
   int                 c;
   /* int                 digit_optind = 0; */
-  int i;
   /* set config to default values */
   strncpy(config.interface, "default", 7);
   config.port         = 3478;
@@ -834,7 +429,9 @@ main(int   argc,
   signal(SIGINT, teardown);
   StunClient_Alloc(&clientData);
 
-  memset( &result, 0, sizeof(result) );
+  /* StunClient_RegisterLogger(clientData, */
+  /*                          stundbg, */
+  /*                          NULL); */
 
   listenConfig.socketConfig[0].tInst  = clientData;
   listenConfig.socketConfig[0].sockfd = sockfd;
@@ -843,7 +440,7 @@ main(int   argc,
   listenConfig.stun_handler           = stunHandler;
 
 
-  listenConfig.socketConfig[1].tInst  = &result;
+  listenConfig.socketConfig[1].tInst  = clientData;
   listenConfig.socketConfig[1].sockfd = icmpSocket;
   listenConfig.socketConfig[1].user   = NULL;
   listenConfig.socketConfig[1].pass   = NULL;
@@ -858,94 +455,39 @@ main(int   argc,
                  socketListenDemux,
                  (void*)&listenConfig);
 
-  /* Fill inn the hiut struct so we get something back in the CB */
-  sockaddr_copy( (struct sockaddr*)&result.localAddr,
-                 (struct sockaddr*)&config.localAddr );
-  sockaddr_copy( (struct sockaddr*)&result.remoteAddr,
-                 (struct sockaddr*)&config.remoteAddr );
-  result.username             = username;
-  result.password             = password;
-  result.user_max_ttl         = config.max_ttl;
-  result.user_start_ttl       = config.start_ttl;
-  result.wait_ms              = config.wait_ms;
-  result.max_recuring         = config.max_recuring;
-  result.user_paralell_traces = config.paralell;
-  result.path_max_ttl         = 255;
-  result.num_traces           = 1;
 
-  npa_init(&result.trace);
+  /* npa_init(&result.trace); */
   srand( time(NULL) ); /* Initialise the random seed. */
 
+
+  npa_init(&trace);
+
   /* *starting here.. */
-  if (out_format == json)
-  {
-    printf( "{\n");
-    printf( "  \"stuntrace\" : {\n");
-    printf( "       \"src\" : \"%s\",\n",
-            sockaddr_toString( (struct sockaddr*)&config.localAddr,
-                               addrStr,
-                               sizeof(addrStr),
-                               true ) );
 
-    printf( "       \"dest\" : \"%s\",\n",
-            sockaddr_toString( (struct sockaddr*)&config.remoteAddr,
-                               addrStr,
-                               sizeof(addrStr),
-                               true ) );
-    printf("       \"nodes\" : [\n");
+  printf( "Starting stuntrace from: '%s'",
+          sockaddr_toString( (struct sockaddr*)&config.localAddr,
+                             addrStr,
+                             sizeof(addrStr),
+                             true ) );
 
-  }
-  else if (out_format == txt)
-  {
-    printf( "Starting stuntrace from: '%s'",
-            sockaddr_toString( (struct sockaddr*)&config.localAddr,
-                               addrStr,
-                               sizeof(addrStr),
-                               true ) );
-
-    printf( "to: '%s'\n",
-            sockaddr_toString( (struct sockaddr*)&config.remoteAddr,
-                               addrStr,
-                               sizeof(addrStr),
-                               true ) );
-  }
-  else if (out_format == csv)
-  {
-    printf( "%s,",
-            sockaddr_toString( (struct sockaddr*)&config.localAddr,
-                               addrStr,
-                               sizeof(addrStr),
-                               false ) );
-  }
+  printf( "to: '%s'\n",
+          sockaddr_toString( (struct sockaddr*)&config.remoteAddr,
+                             addrStr,
+                             sizeof(addrStr),
+                             true ) );
 
   gettimeofday(&start, NULL);
 
-  for (i = 1; i < config.paralell + 1; i++)
-  {
-    uint32_t len;
-    stunlib_createId(&result.ttlInfo[i].stunMsgId, rand(), i);
-    result.stunCtx    = clientData;
-    result.currentTTL = config.start_ttl - 1 + i;
-
-
-    len = StunClient_startSTUNTrace(clientData,
-                                    &result,
-                                    (struct sockaddr*)&result.remoteAddr,
-                                    (struct sockaddr*)&result.localAddr,
-                                    false,
-                                    result.username,
-                                    result.password,
-                                    result.currentTTL,
-                                    result.ttlInfo[result.currentTTL].stunMsgId,
-                                    sockfd,
-                                    sendPacket,
-                                    StunStatusCallBack,
-                                    NULL);
-    if (i == 1)
-    {
-      result.stunLen = len;
-    }
-  }
+  StunTrace_startTrace(clientData,
+    &trace,
+                       (const struct sockaddr*)&config.remoteAddr,
+                       (const struct sockaddr*)&config.localAddr,
+                       sockfd,
+                       username,
+                       password,
+                       config.max_recuring,
+                       StunTraceCallBack,
+                       sendPacket);
 
   pause();
 }
