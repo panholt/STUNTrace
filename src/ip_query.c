@@ -155,43 +155,21 @@ asLookup(char* ip)
 
   int  asNum = 0;
   char server[256];
+  int i = 0;
+  strcpy(server, "whois.iana.org\0");
 
-  if ( whois_query("whois.iana.org", ip, &response) )
-  {
-    printf("Whois query failed");
-  }
-  asNum = getAsNumber( response, server, sizeof(server) );
+  //Sometimes we need to ask 3 different servers..
+  while(asNum==0 && i<=3){
+    i++;
+    if ( whois_query(server, ip, &response) )
+    {
+      free(response);
+      return 0;
+    }
+    asNum = getAsNumber( response, server, sizeof(server) );
 
-
-  if (asNum > 0)
-  {
-    /* printf("AS: %i\n",              asNum); */
-    free(response);
-    return asNum;
-  }
-
-  if ( whois_query(server, ip, &response) )
-  {
-    /*printf("Whois query failed");*/
-    free(response);
-    return 0;
   }
 
-  asNum = getAsNumber( response, server, sizeof(server) );
-  if (asNum > 0)
-  {
-    free(response);
-    return asNum;
-  }
-
-  if ( whois_query(server, ip, &response) )
-  {
-    printf("Whois query failed");
-    free(response);
-    return 0;
-  }
-
-  asNum = getAsNumber( response, server, sizeof(server) );
   free(response);
   return asNum;
 }
