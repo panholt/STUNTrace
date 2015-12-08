@@ -10,7 +10,7 @@
 
 #include <stunlib.h>
 
-#define MAXBUFLEN 2048
+#define MAXBUFLEN 4048
 #define MAX_LISTEN_SOCKETS 10
 
 
@@ -27,22 +27,18 @@ struct listenConfig{
     struct socketConfig socketConfig[MAX_LISTEN_SOCKETS];
     int numSockets;
     /*Handles normal data like RTP etc */
-    void (*data_handler)(struct socketConfig *, struct sockaddr *, 
+    void (*data_handler)(struct socketConfig *, struct sockaddr *,
                          void *, unsigned char *);
     /*Handles STUN packet*/
-    void (*stun_handler)(struct socketConfig *, struct sockaddr *, 
+    void (*stun_handler)(struct socketConfig *, struct sockaddr *,
                          void *, unsigned char *, int);
 };
 
-int createLocalUDPSocket(int ai_family,
+int createLocalSocket(int ai_family,
                          const struct sockaddr *localIp,
+                          int                    ai_socktype,
                          uint16_t port);
 
-
-int createSocket(char host[], char port[], 
-                 int ai_flags, 
-                 struct addrinfo *servinfo, 
-                 struct addrinfo **p);
 
 void *socketListenDemux(void *ptr);
 

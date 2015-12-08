@@ -25,6 +25,7 @@
 #include <netinet/ip_icmp.h>
 
 #include <string.h>
+#include <ctype.h>
 
 #include <stunlib.h>
 #include <stunclient.h>
@@ -36,10 +37,10 @@
 #include "utils.h"
 #include "iphelper.h"
 #include "sockethelper.h"
-//#include "hiut_lib.h"
 
 int                        sockfd;
 int                        icmpSocket;
+int                        querySocket;
 static struct listenConfig listenConfig;
 static unsigned char       rcv_message[MAXBUFLEN];
 
@@ -73,6 +74,202 @@ struct trace_config {
   struct sockaddr_storage localAddr;
 };
 
+int
+whois_query(char*  server,
+            char*  query,
+            char** response)
+{
+  char message[100], buffer[1500];
+  int  read_size, total_size = 0;
+  int error;
+
+  /* char msg[INET6_ADDRSTRLEN + 2]; */
+  int querySocket;
+  /* Test query */
+  struct addrinfo hints, * res;
+
+  (void) server;
+  /* first, load up address structs with getaddrinfo(): */
+
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family   = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  /* getaddrinfo("freegeoip.net", "80", &hints, &res); */
+  /* getaddrinfo("whois.iana.org", "43", &hints, &res); */
+  error = getaddrinfo(server, "43", &hints, &res);
+  if( error){
+    return error;
+  }
+  /* make a socket: */
+  querySocket = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+  /* connect! */
+  if (connect(querySocket, res->ai_addr, res->ai_addrlen) < 0)
+  {
+    perror("connect failed when trying to do whois query");
+  }
+
+
+
+  /* Now send some data or message */
+  //("\nQuerying for ... %s ... (%s)", query, server);
+  sprintf(message, "%s\r\n", query);
+  if (send(querySocket, message, strlen(message), 0) < 0)
+  {
+    perror("send failed");
+  }
+
+  /* Now receive the response */
+  while ( ( read_size = recv(querySocket, buffer, sizeof(buffer), 0) ) )
+  {
+    *response = realloc(*response, read_size + total_size);
+    if (*response == NULL)
+    {
+      printf("realloc failed");
+    }
+    memcpy(*response + total_size, buffer, read_size);
+    total_size += read_size;
+  }
+  //printf("Done");
+  fflush(stdout);
+
+  *response                 = realloc(*response, total_size + 1);
+  *(*response + total_size) = '\0';
+
+  close(querySocket);
+  return 0;
+}
+
+
+int
+parseOrigin(char* as)
+{
+  int num = 0;
+  if (as != NULL)
+  {
+    char* cnum;
+
+    cnum = strrchr(as, ':');
+    cnum++;
+    while ( isspace(*cnum) )
+    {
+      cnum++;
+    }
+    num = atoi(cnum + 2);
+    return num;
+  }
+  return 0;
+}
+
+int
+getAsNumber(char* buffer,
+            char* nextServer,
+            int   sizeSrv)
+{
+  char* tok, * as, * serv;
+  int   num;
+
+  tok = strtok(buffer, "\n");
+  while (tok != NULL)
+  {
+    /* Check for origin: */
+    as = strstr(tok, "origin:");
+    if (as != NULL)
+    {
+      num = parseOrigin(tok);
+      if (num != 0)
+      {
+        return num;
+      }
+    }
+    as = strstr(tok, "OriginAS:");
+    if (as != NULL)
+    {
+      num = parseOrigin(tok);
+      if (num != 0)
+      {
+        return num;
+      }
+    }
+
+    /* While we are at it set nextserv as well */
+    serv = strstr(tok, "refer:");
+    if ( (serv != NULL) )
+    {
+      serv = serv + 7;
+      while ( isspace(*serv) )
+      {
+        serv++;
+      }
+      strncpy(nextServer, serv, sizeSrv);
+    }
+    serv = strstr(tok, "ReferralServer:");
+    if ( (serv != NULL) )
+    {
+      serv = serv + 16;
+      while ( isspace(*serv) )
+      {
+        serv++;
+      }
+      serv = serv + strlen("whois://");
+      //printf("Setting next server!\n");
+      strncpy(nextServer, serv, sizeSrv);
+    }
+    /* Next line */
+    tok = strtok(NULL, "\n");
+  }
+    return 0;
+}
+
+
+int
+asLookup(char* ip)
+{
+  char* response = NULL;
+
+  int  asNum = 0;
+  char server[256];
+  /* char server[255]; */
+
+  if ( whois_query("whois.iana.org", ip, &response) )
+  {
+        printf("Whois query failed");
+  }
+  asNum = getAsNumber( response, server, sizeof(server) );
+
+
+  if (asNum > 0)
+  {
+        //printf("AS: %i\n",              asNum);
+        return asNum;
+  }
+  else
+  {
+    if ( whois_query(server, ip, &response) )
+    {
+        //printf("Whois query failed");
+        return 0;
+    }
+        //printf("%s", response);
+    asNum = getAsNumber( response, server, sizeof(server) );
+    if (asNum <= 0)
+    {
+        //printf("Still no AS num (%s)\n\n\n", server);
+      if ( whois_query(server, ip, &response) )
+      {
+        printf("Whois query failed");
+        return 0;
+      }
+        //printf("%s",                         response);
+        asNum = getAsNumber( response, server, sizeof(server) );
+        //printf("AS NUM: %i",                 asNum);
+    }
+  }
+  free(response);
+
+  return asNum;
+}
 
 void
 printTimeSpent(uint32_t wait)
@@ -134,30 +331,37 @@ StunTraceCallBack(void*                    userCtx,
 {
 
   struct npa_trace* trace = (struct npa_trace*) userCtx;
-  char addr[SOCKADDR_MAX_STRLEN];
+  char              addr[SOCKADDR_MAX_STRLEN];
+  int               asnum;
   if (data->nodeAddr == NULL)
   {
     printf(" * \n");
     return;
   }
+  sockaddr_toString(data->nodeAddr,
+                    addr,
+                    sizeof(addr),
+                    false);
+
+  asnum = asLookup(addr);
 
   npa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
-  printf(" %i %s %i.%ims (%i)\n", data->hop,
-         sockaddr_toString(data->nodeAddr,
-                           addr,
-                           sizeof(addr),
-                           false),
+
+  printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
+         addr,
          data->rtt / 1000, data->rtt % 1000,
-         data->retransmits);
+         data->retransmits,
+         asnum);
 
   if (data->traceEnd)
   {
     printSegmentAnalytics(trace);
 
-    if(data->done){
-    printTimeSpent(0);
-    exit(0);
-  }
+    if (data->done)
+    {
+      printTimeSpent(0);
+      exit(0);
+    }
   }
 }
 
@@ -260,6 +464,10 @@ dataHandler(struct socketConfig* config,
                            fromAddr,
                            rcv_message );
   }
+  else
+  {
+    /* printf("Got some data not yet handled\n %s \n", message); */
+  }
 }
 
 static void
@@ -290,6 +498,8 @@ printUsage()
   exit(0);
 
 }
+
+
 
 int
 main(int   argc,
@@ -406,9 +616,10 @@ main(int   argc,
 
 
   /* Setting up UDP socket and and aICMP sockhandle */
-  sockfd = createLocalUDPSocket(config.remoteAddr.ss_family,
-                                (struct sockaddr*)&config.localAddr,
-                                0);
+  sockfd = createLocalSocket(config.remoteAddr.ss_family,
+                             (struct sockaddr*)&config.localAddr,
+                             SOCK_DGRAM,
+                             0);
 
   if (config.remoteAddr.ss_family == AF_INET)
   {
@@ -425,6 +636,11 @@ main(int   argc,
     perror("socket");
     exit(1);
   }
+
+
+
+
+
 
   signal(SIGINT, teardown);
   StunClient_Alloc(&clientData);
@@ -448,7 +664,6 @@ main(int   argc,
   listenConfig.data_handler           = dataHandler;
 
 
-
   pthread_create(&stunTickThread, NULL, tickStun, (void*)clientData);
   pthread_create(&socketListenThread,
                  NULL,
@@ -461,6 +676,7 @@ main(int   argc,
 
 
   npa_init(&trace);
+  //printf("AS: %i\n", asLookup("192.168.10.12"));
 
   /* *starting here.. */
 
@@ -477,9 +693,9 @@ main(int   argc,
                              true ) );
 
   gettimeofday(&start, NULL);
-
+//#if 0
   StunTrace_startTrace(clientData,
-    &trace,
+                       &trace,
                        (const struct sockaddr*)&config.remoteAddr,
                        (const struct sockaddr*)&config.localAddr,
                        sockfd,
@@ -488,6 +704,8 @@ main(int   argc,
                        config.max_recuring,
                        StunTraceCallBack,
                        sendPacket);
-
+//#endif
+  /* sleep(100); */
+  /* exit(0); */
   pause();
 }

@@ -13,9 +13,10 @@
 
 
 int
-createLocalUDPSocket(int                    ai_family,
-                     const struct sockaddr* localIp,
-                     uint16_t               port)
+createLocalSocket(int                    ai_family,
+                  const struct sockaddr* localIp,
+                  int                    ai_socktype,
+                  uint16_t               port)
 {
   int sockfd;
 
@@ -35,7 +36,7 @@ createLocalUDPSocket(int                    ai_family,
   /* get us a socket and bind it */
   memset(&hints, 0, sizeof hints);
   hints.ai_family   = ai_family;
-  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_socktype = ai_socktype;
   hints.ai_flags    = AI_NUMERICHOST | AI_ADDRCONFIG;
 
 
@@ -95,53 +96,6 @@ createLocalUDPSocket(int                    ai_family,
 }
 
 
-int
-createSocket(char              host[],
-             char              port[],
-             int               ai_flags,
-             struct addrinfo*  servinfo,
-             struct addrinfo** p)
-{
-  struct addrinfo hints;
-  int             rv, sockfd;
-  memset(&hints, 0, sizeof hints);
-  hints.ai_family   = AF_INET6;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags    = ai_flags; /* use my IP if not 0 */
-
-  if ( ( rv = getaddrinfo(host, port, &hints, &servinfo) ) != 0 )
-  {
-    fprintf( stderr, "getaddrinfo: %s\n", gai_strerror(rv) );
-    return -1;
-  }
-
-  /* loop through all the results and bind to the first we can */
-  for ( (*p) = servinfo; (*p) != NULL; (*p) = (*p)->ai_next )
-  {
-    if ( ( sockfd = socket( (*p)->ai_family, (*p)->ai_socktype,
-                            (*p)->ai_protocol ) ) == -1 )
-    {
-      perror("socket");
-      continue;
-    }
-
-    if ( (ai_flags != 0) &&
-         (bind(sockfd, (*p)->ai_addr, (*p)->ai_addrlen) == -1) )
-    {
-      close(sockfd);
-      perror("bind");
-      continue;
-    }
-    break;
-  }
-  if ( (*p) == NULL )
-  {
-    fprintf(stderr, "failed to bind socket\n");
-    return -2;
-  }
-  return sockfd;
-}
-
 void*
 socketListenDemux(void* ptr)
 {
@@ -154,8 +108,8 @@ socketListenDemux(void* ptr)
   int                     numbytes;
   int                     i;
 
-  //int  keyLen = 16;
-  //char md5[keyLen];
+  /* int  keyLen = 16; */
+  /* char md5[keyLen]; */
 
   for (i = 0; i < config->numSockets; i++)
   {
@@ -170,7 +124,7 @@ socketListenDemux(void* ptr)
     rv = poll(ufds, config->numSockets, -1);
     if (rv == -1)
     {
-      perror("poll");       /* error occurred in poll() */
+        perror("poll");     /* error occurred in poll() */
     }
     else if (rv == 0)
     {
@@ -190,28 +144,32 @@ socketListenDemux(void* ptr)
             perror("recvfrom");
             exit(1);
           }
-          if ( stunlib_isStunMsg(buf, numbytes) )
-          {
-            /* Send to STUN, with CB to data handler if STUN packet contations
-             * DATA */
-            config->stun_handler(&config->socketConfig[i],
-                                 (struct sockaddr*)&their_addr,
-                                 config->socketConfig[i].tInst,
-                                 buf,
-                                 numbytes);
-          }
-          else
-          {
-            config->data_handler(&config->socketConfig[i],
-                                 (struct sockaddr*)&their_addr,
-                                 config->socketConfig[i].tInst,
-                                 buf);
-          }
         }
+
+
+        if ( stunlib_isStunMsg(buf, numbytes) )
+        {
+          /* Send to STUN, with CB to data handler if STUN packet contations
+           * DATA */
+          config->stun_handler(&config->socketConfig[i],
+                               (struct sockaddr*)&their_addr,
+                               config->socketConfig[i].tInst,
+                               buf,
+                               numbytes);
+        }
+        else
+        {
+          config->data_handler(&config->socketConfig[i],
+                               (struct sockaddr*)&their_addr,
+                               config->socketConfig[i].tInst,
+                               buf);
+        }
+
       }
     }
   }
 }
+
 
 
 
@@ -228,7 +186,7 @@ sendPacket(int                    sockHandle,
   uint32_t sock_ttl;
   uint32_t addr_len;
   (void) useRelay;
-  
+
   if (dstAddr->sa_family == AF_INET)
   {
     addr_len = sizeof(struct sockaddr_in);
