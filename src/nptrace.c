@@ -106,26 +106,40 @@ printTimeSpent(uint32_t wait)
 void
 printSegmentAnalytics(const struct npa_trace* trace)
 {
-  int                numseg = 3;
+  int                numseg = 15;
   struct npa_segment segments[numseg];
-  npa_getSegmentRTTs(trace,
-                     segments,
-                     numseg);
+  numseg = npa_getSegmentAsRTTs(trace,
+                                segments,
+                                numseg);
 
-  printf( "------- Path Stats ------\n");
-  printf( "hops: %i, samples: %i, inactive: %i\n",
+    printf( "------- Path Stats ------\n");
+    printf( "hops: %i, samples: %i, inactive: %i\n",
           npa_getNumberOfHops(trace),
           npa_getNumberOfSamples(trace),
           npa_getNumberOfInactiveHops(trace) );
 
   for (int i = 0; i < numseg; i++)
   {
-    printf("Segment %i STT (%i->%i): %i.%ims \n",
-           i + 1,
-           segments[i].start,
-           segments[i].stop,
-           segments[i].stt / 1000,
-           segments[i].stt % 1000);
+    if (segments[i].type == NPA_SEGMENT_INTRA_AS)
+    {
+      printf("Segment %i Time spent in AS: %i (Hop:%i->%i): %i.%ims \n",
+             i + 1,
+             trace->hop[segments[i].start].as,
+             segments[i].start,
+             segments[i].stop,
+             segments[i].stt / 1000,
+             segments[i].stt % 1000);
+    }
+    if (segments[i].type == NPA_SEGMENT_INTER_AS)
+    {
+      printf("Segment %i Time spent between AS%i -> AS%i: %i.%ims \n",
+             i + 1,
+             trace->hop[segments[i].start].as,
+             trace->hop[segments[i].stop].as,
+                          segments[i].stt / 1000,
+             segments[i].stt % 1000);
+    }
+
   }
 }
 
@@ -136,10 +150,10 @@ StunTraceCallBack(void*                    userCtx,
 
   struct npa_trace* trace = (struct npa_trace*) userCtx;
   char              addr[SOCKADDR_MAX_STRLEN];
-  int               asnum;
+  int               asnum = 0;
   if (data->nodeAddr == NULL)
   {
-    printf(" * \n");
+      printf(" * \n");
     return;
   }
   sockaddr_toString(data->nodeAddr,
@@ -147,10 +161,14 @@ StunTraceCallBack(void*                    userCtx,
                     sizeof(addr),
                     false);
 
-  asnum = asLookup(addr);
+
 
   npa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
-
+  if (data->trace_num <= 1)
+  {
+    asnum = asLookup(addr);
+    npa_addIpInfo(trace, data->nodeAddr, asnum);
+  }
   printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
          addr,
          data->rtt / 1000, data->rtt % 1000,
@@ -480,7 +498,7 @@ main(int   argc,
 
 
   npa_init(&trace);
-  //printf("AS: %i\n", asLookup("192.168.10.12"));
+  /* printf("AS: %i\n", asLookup("192.168.10.12")); */
 
   /* *starting here.. */
 
@@ -497,7 +515,7 @@ main(int   argc,
                              true ) );
 
   gettimeofday(&start, NULL);
-//#if 0
+/* #if 0 */
   StunTrace_startTrace(clientData,
                        &trace,
                        (const struct sockaddr*)&config.remoteAddr,
@@ -508,8 +526,8 @@ main(int   argc,
                        config.max_recuring,
                        StunTraceCallBack,
                        sendPacket);
-//#endif
-  /* sleep(100); */
-  /* exit(0); */
+/* #endif */
+/* sleep(100); */
+/* exit(0); */
   pause();
 }

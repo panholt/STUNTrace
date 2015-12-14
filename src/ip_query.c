@@ -155,11 +155,12 @@ asLookup(char* ip)
 
   int  asNum = 0;
   char server[256];
-  int i = 0;
+  int  i = 0;
   strcpy(server, "whois.iana.org\0");
 
-  //Sometimes we need to ask 3 different servers..
-  while(asNum==0 && i<=3){
+  /* Sometimes we need to ask 3 different servers.. */
+  while (asNum == 0 && i <= 3)
+  {
     i++;
     if ( whois_query(server, ip, &response) )
     {
@@ -170,6 +171,6 @@ asLookup(char* ip)
 
   }
 
-  free(response);
+      free(response);
   return asNum;
 }
