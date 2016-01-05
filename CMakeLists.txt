@@ -120,18 +120,18 @@ UncrustifyTop(${uncrustify})
 Include(ExternalProject)
 
 ExternalProject_Add(
-   project_npa
-   GIT_REPOSITORY https://github.com/palerikm/NPAlib
+   project_pa
+   GIT_REPOSITORY https://github.com/palerikm/PAlib
    CMAKE_ARGS -Doptimize=OFF -Dbuild_docs=OFF -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
    INSTALL_DIR "${dist_dir}"
    UPDATE_DISCONNECTED 1
 )
 
-ExternalProject_Get_Property(project_npa install_dir)
+ExternalProject_Get_Property(project_pa install_dir)
 include_directories ( "${install_dir}/include" )
-add_library(npa STATIC IMPORTED)
-set_property(TARGET npa PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMAKE_SHARED_MODULE_PREFIX}npa${CMAKE_SHARED_LIBRARY_SUFFIX}")
-add_dependencies(npa project_npa)
+add_library(pa STATIC IMPORTED)
+set_property(TARGET pa PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMAKE_SHARED_MODULE_PREFIX}pa${CMAKE_SHARED_LIBRARY_SUFFIX}")
+add_dependencies(pa project_pa)
 
 ExternalProject_Add(
    project_sockaddrutil

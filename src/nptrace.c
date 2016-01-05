@@ -31,7 +31,7 @@
 #include <stuntrace.h>
 #include <stun_intern.h>
 
-#include <npalib.h>
+#include <palib.h>
 
 #include "utils.h"
 #include "iphelper.h"
@@ -104,23 +104,23 @@ printTimeSpent(uint32_t wait)
 }
 
 void
-printSegmentAnalytics(const struct npa_trace* trace)
+printSegmentAnalytics(const struct pa_trace* trace)
 {
   int                numseg = 15;
-  struct npa_segment segments[numseg];
-  numseg = npa_getSegmentAsRTTs(trace,
+  struct pa_segment segments[numseg];
+  numseg = pa_getSegmentAsRTTs(trace,
                                 segments,
                                 numseg);
 
     printf( "------- Path Stats ------\n");
     printf( "hops: %i, samples: %i, inactive: %i\n",
-          npa_getNumberOfHops(trace),
-          npa_getNumberOfSamples(trace),
-          npa_getNumberOfInactiveHops(trace) );
+          pa_getNumberOfHops(trace),
+          pa_getNumberOfSamples(trace),
+          pa_getNumberOfInactiveHops(trace) );
 
   for (int i = 0; i < numseg; i++)
   {
-    if (segments[i].type == NPA_SEGMENT_INTRA_AS)
+    if (segments[i].type == PA_SEGMENT_INTRA_AS)
     {
       printf("Segment %i Time spent in AS: %i (Hop:%i->%i): %i.%ims \n",
              i + 1,
@@ -130,7 +130,7 @@ printSegmentAnalytics(const struct npa_trace* trace)
              segments[i].stt / 1000,
              segments[i].stt % 1000);
     }
-    if (segments[i].type == NPA_SEGMENT_INTER_AS)
+    if (segments[i].type == PA_SEGMENT_INTER_AS)
     {
       printf("Segment %i Time spent between AS%i -> AS%i: %i.%ims \n",
              i + 1,
@@ -148,7 +148,7 @@ StunTraceCallBack(void*                    userCtx,
                   StunTraceCallBackData_T* data)
 {
 
-  struct npa_trace* trace = (struct npa_trace*) userCtx;
+  struct pa_trace* trace = (struct pa_trace*) userCtx;
   char              addr[SOCKADDR_MAX_STRLEN];
   int               asnum = 0;
   if (data->nodeAddr == NULL)
@@ -163,11 +163,11 @@ StunTraceCallBack(void*                    userCtx,
 
 
 
-  npa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
+  pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
   if (data->trace_num <= 1)
   {
     asnum = asLookup(addr);
-    npa_addIpInfo(trace, data->nodeAddr, asnum);
+    pa_addIpInfo(trace, data->nodeAddr, asnum);
   }
   printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
          addr,
@@ -333,7 +333,7 @@ main(int   argc,
   STUN_CLIENT_DATA* clientData;
   char              addrStr[SOCKADDR_MAX_STRLEN];
 
-  struct npa_trace trace;
+  struct pa_trace trace;
 
 
   struct trace_config config;
@@ -493,11 +493,11 @@ main(int   argc,
                  (void*)&listenConfig);
 
 
-  /* npa_init(&result.trace); */
+  /* pa_init(&result.trace); */
   srand( time(NULL) ); /* Initialise the random seed. */
 
 
-  npa_init(&trace);
+  pa_init(&trace);
   /* printf("AS: %i\n", asLookup("192.168.10.12")); */
 
   /* *starting here.. */

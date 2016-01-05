@@ -17,7 +17,7 @@ add_executable ( nptrace
                  ip_query.c
                  nptrace.c )
 
-target_link_libraries ( nptrace PRIVATE npa
+target_link_libraries ( nptrace PRIVATE pa
                         sockaddrutil
                         stunlib
                         pthread
