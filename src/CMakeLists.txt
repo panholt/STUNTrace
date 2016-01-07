@@ -15,6 +15,7 @@ add_executable ( nptrace
                  iphelper.c
                  sockethelper.c
                  ip_query.c
+                 utils.c
                  nptrace.c )
 
 target_link_libraries ( nptrace PRIVATE pa

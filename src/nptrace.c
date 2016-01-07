@@ -284,7 +284,8 @@ dataHandler(struct socketConfig* config,
   {
     StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
                            fromAddr,
-                           rcv_message );
+                           getTTLFromBuf( AF_INET, config->firstPktLen,rcv_message),
+                           getICMPTypeFromBuf( AF_INET, rcv_message) );
   }
   else
   {
@@ -516,7 +517,7 @@ main(int   argc,
 
   gettimeofday(&start, NULL);
 /* #if 0 */
-  StunTrace_startTrace(clientData,
+  int len = StunTrace_startTrace(clientData,
                        &trace,
                        (const struct sockaddr*)&config.remoteAddr,
                        (const struct sockaddr*)&config.localAddr,
@@ -526,6 +527,8 @@ main(int   argc,
                        config.max_recuring,
                        StunTraceCallBack,
                        sendPacket);
+
+  listenConfig.socketConfig[1].firstPktLen = len;
 /* #endif */
 /* sleep(100); */
 /* exit(0); */

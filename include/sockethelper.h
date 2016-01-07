@@ -20,6 +20,7 @@ struct socketConfig{
     char* user;
     char* pass;
     char* realm;
+    int firstPktLen;
 };
 
 
