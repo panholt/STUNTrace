@@ -15,7 +15,6 @@
 
 
 struct socketConfig {
-  void* tInst;
   int   sockfd;
   char* user;
   char* pass;
@@ -25,6 +24,7 @@ struct socketConfig {
 
 
 struct listenConfig {
+  void* tInst;
   struct socketConfig socketConfig[MAX_LISTEN_SOCKETS];
   int                 numSockets;
   /*Handles normal data like RTP etc */

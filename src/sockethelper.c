@@ -6,6 +6,14 @@
 #include <stdarg.h>
 
 #include <poll.h>
+#ifdef __linux
+#include <arpa/inet.h>
+
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <linux/types.h>	// required for linux/errqueue.h
+#include <linux/errqueue.h>	// SO_EE_ORIGIN_ICMP
+#endif
 
 
 #include <stunclient.h>
@@ -136,6 +144,47 @@ socketListenDemux(void* ptr)
       /* check for events on s1: */
       for (i = 0; i < config->numSockets; i++)
       {
+        #if defined(__linux)
+        if (ufds[i].revents & POLLERR) {
+                      //Do stuff with msghdr
+                    struct msghdr msg;
+                    struct sockaddr_in response;		// host answered IP_RECVERR
+                    char control_buf[1500];
+                    struct iovec iov;
+                    char buf[1500];
+                    struct cmsghdr *cmsg;
+
+                    memset(&msg, 0, sizeof(msg));
+                    msg.msg_name = &response;			// host
+                    msg.msg_namelen = sizeof(response);
+                    msg.msg_control = control_buf;
+                    msg.msg_controllen = sizeof(control_buf);
+                    iov.iov_base = buf;
+                    iov.iov_len = sizeof(buf);
+                    msg.msg_iov = &iov;
+                    msg.msg_iovlen = 1;
+
+                    if (recvmsg(ufds[i].fd, &msg, MSG_ERRQUEUE ) == -1) {
+			//Ignore for now. Will get it later..
+                        continue;
+                    }
+                    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+                         cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+                        if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVERR){
+                            struct sock_extended_err *ee;
+                            ee = (struct sock_extended_err *) CMSG_DATA(cmsg);
+
+                            if (ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+                                config->icmp_handler(&config->socketConfig[1],
+                                                     SO_EE_OFFENDER(ee),
+                                                     config->tInst,
+                                                     ee->ee_type);
+                          }
+                        }
+                    }
+            continue;
+        }
+        #endif
         if (ufds[i].revents & POLLIN)
         {
           if ( ( numbytes =
@@ -148,22 +197,24 @@ socketListenDemux(void* ptr)
         }
 
 
+
         if ( stunlib_isStunMsg(buf, numbytes) )
         {
           /* Send to STUN, with CB to data handler if STUN packet contations
            * DATA */
           config->stun_handler(&config->socketConfig[i],
                                (struct sockaddr*)&their_addr,
-                               config->socketConfig[i].tInst,
+                               config->tInst,
                                buf,
                                numbytes);
         }
         else
         {
+
           /* TODO IPV6..*/
           config->icmp_handler( &config->socketConfig[i],
                                 (struct sockaddr*)&their_addr,
-                                config->socketConfig[i].tInst,
+                                config->tInst,
                                 getICMPTypeFromBuf(AF_INET, buf) );
         }
 

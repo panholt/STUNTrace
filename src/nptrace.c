@@ -42,8 +42,6 @@ int                        sockfd;
 int                        icmpSocket;
 int                        querySocket;
 static struct listenConfig listenConfig;
-static unsigned char       rcv_message[MAXBUFLEN];
-
 struct timeval start;
 struct timeval stop;
 
@@ -154,8 +152,9 @@ StunTraceCallBack(void*                    userCtx,
   if (data->nodeAddr == NULL)
   {
       printf(" * \n");
-    return;
+
   }
+  else{
   sockaddr_toString(data->nodeAddr,
                     addr,
                     sizeof(addr),
@@ -174,7 +173,7 @@ StunTraceCallBack(void*                    userCtx,
          data->rtt / 1000, data->rtt % 1000,
          data->retransmits,
          asnum);
-
+  }
   if (data->traceEnd)
   {
     printSegmentAnalytics(trace);
@@ -214,6 +213,7 @@ tickStun(void* ptr)
     nanosleep(&timer, &remaining);
     StunClient_HandleTick(clientData, 50);
   }
+  return NULL;
 }
 
 
@@ -266,27 +266,17 @@ stunHandler(struct socketConfig* config,
 }
 
 void
+
 icmpHandler(struct socketConfig* config,
             struct sockaddr*     fromAddr,
             void*                cb,
             int                  icmpType)
 {
-  int n = sizeof(rcv_message);
-
-  if (n > 0)
-  {
-    rcv_message[n - 1] = '\0';
-  }
-  if (config->sockfd == icmpSocket)
-  {
-    StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
+  (void)config;
+  StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
                            fromAddr,
                            icmpType );
-  }
-  else
-  {
-    /* printf("Got some data not yet handled\n %s \n", message); */
-  }
+
 }
 
 static void
@@ -433,13 +423,27 @@ main(int   argc,
     exit(1);
   }
 
-
+StunClient_Alloc(&clientData);
   /* Setting up UDP socket and and aICMP sockhandle */
   sockfd = createLocalSocket(config.remoteAddr.ss_family,
                              (struct sockaddr*)&config.localAddr,
                              SOCK_DGRAM,
                              0);
-
+  listenConfig.tInst  = clientData;
+  listenConfig.socketConfig[0].sockfd = sockfd;
+  listenConfig.socketConfig[0].user   = username;
+  listenConfig.socketConfig[0].pass   = password;
+  listenConfig.stun_handler           = stunHandler;
+  listenConfig.icmp_handler           = icmpHandler;
+  listenConfig.numSockets             = 1;
+  #if defined(__linux)
+    int val = 1;
+  if (setsockopt (sockfd, SOL_IP, IP_RECVERR, &val, sizeof (val)) < 0)
+  {
+    perror("setsockopt IP_RECVERR");
+    exit(1);
+  }
+  #else
   if (config.remoteAddr.ss_family == AF_INET)
   {
     icmpSocket = socket(config.remoteAddr.ss_family, SOCK_DGRAM, IPPROTO_ICMP);
@@ -452,36 +456,25 @@ main(int   argc,
 
   if (icmpSocket < 0)
   {
+
     perror("socket");
     exit(1);
+
   }
-
-
-
-
-
-
-  signal(SIGINT, teardown);
-  StunClient_Alloc(&clientData);
-
-  /* StunClient_RegisterLogger(clientData, */
-  /*                          stundbg, */
-  /*                          NULL); */
-
-  listenConfig.socketConfig[0].tInst  = clientData;
-  listenConfig.socketConfig[0].sockfd = sockfd;
-  listenConfig.socketConfig[0].user   = username;
-  listenConfig.socketConfig[0].pass   = password;
-  listenConfig.stun_handler           = stunHandler;
-
-
   listenConfig.socketConfig[1].tInst  = clientData;
   listenConfig.socketConfig[1].sockfd = icmpSocket;
   listenConfig.socketConfig[1].user   = NULL;
   listenConfig.socketConfig[1].pass   = NULL;
   listenConfig.numSockets             = 2;
-  listenConfig.icmp_handler           = icmpHandler;
 
+  #endif
+  signal(SIGINT, teardown);
+
+
+
+   //StunClient_RegisterLogger(clientData,
+    //                        stundbg,
+    //                        NULL);
 
   pthread_create(&stunTickThread, NULL, tickStun, (void*)clientData);
   pthread_create(&socketListenThread,
@@ -529,4 +522,4 @@ main(int   argc,
 /* sleep(100); */
 /* exit(0); */
   pause();
-}
+  }
