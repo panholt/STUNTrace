@@ -106,11 +106,11 @@ printTimeSpent(uint32_t wait)
 void
 printSegmentAnalytics(const struct pa_trace* trace)
 {
-  int                numseg = 15;
+  int               numseg = 15;
   struct pa_segment segments[numseg];
   numseg = pa_getSegmentAsRTTs(trace,
-                                segments,
-                                numseg);
+                               segments,
+                               numseg);
 
     printf( "------- Path Stats ------\n");
     printf( "hops: %i, samples: %i, inactive: %i\n",
@@ -136,7 +136,7 @@ printSegmentAnalytics(const struct pa_trace* trace)
              i + 1,
              trace->hop[segments[i].start].as,
              trace->hop[segments[i].stop].as,
-                          segments[i].stt / 1000,
+             segments[i].stt / 1000,
              segments[i].stt % 1000);
     }
 
@@ -149,8 +149,8 @@ StunTraceCallBack(void*                    userCtx,
 {
 
   struct pa_trace* trace = (struct pa_trace*) userCtx;
-  char              addr[SOCKADDR_MAX_STRLEN];
-  int               asnum = 0;
+  char             addr[SOCKADDR_MAX_STRLEN];
+  int              asnum = 0;
   if (data->nodeAddr == NULL)
   {
       printf(" * \n");
@@ -266,16 +266,13 @@ stunHandler(struct socketConfig* config,
 }
 
 void
-dataHandler(struct socketConfig* config,
+icmpHandler(struct socketConfig* config,
             struct sockaddr*     fromAddr,
             void*                cb,
-            unsigned char*       message)
+            int                  icmpType)
 {
-  (void)cb;
   int n = sizeof(rcv_message);
 
-  memset(rcv_message, 0, n);
-  memcpy(rcv_message, message, n);
   if (n > 0)
   {
     rcv_message[n - 1] = '\0';
@@ -284,8 +281,7 @@ dataHandler(struct socketConfig* config,
   {
     StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
                            fromAddr,
-                           getTTLFromBuf( AF_INET, config->firstPktLen,rcv_message),
-                           getICMPTypeFromBuf( AF_INET, rcv_message) );
+                           icmpType );
   }
   else
   {
@@ -484,7 +480,7 @@ main(int   argc,
   listenConfig.socketConfig[1].user   = NULL;
   listenConfig.socketConfig[1].pass   = NULL;
   listenConfig.numSockets             = 2;
-  listenConfig.data_handler           = dataHandler;
+  listenConfig.icmp_handler           = icmpHandler;
 
 
   pthread_create(&stunTickThread, NULL, tickStun, (void*)clientData);
@@ -518,15 +514,15 @@ main(int   argc,
   gettimeofday(&start, NULL);
 /* #if 0 */
   int len = StunTrace_startTrace(clientData,
-                       &trace,
-                       (const struct sockaddr*)&config.remoteAddr,
-                       (const struct sockaddr*)&config.localAddr,
-                       sockfd,
-                       username,
-                       password,
-                       config.max_recuring,
-                       StunTraceCallBack,
-                       sendPacket);
+                                 &trace,
+                                 (const struct sockaddr*)&config.remoteAddr,
+                                 (const struct sockaddr*)&config.localAddr,
+                                 sockfd,
+                                 username,
+                                 password,
+                                 config.max_recuring,
+                                 StunTraceCallBack,
+                                 sendPacket);
 
   listenConfig.socketConfig[1].firstPktLen = len;
 /* #endif */

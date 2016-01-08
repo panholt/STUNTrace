@@ -43,6 +43,9 @@ stamp-h1
 autom4te.cache/*
 .libs
 
+.tags
+.build-tools*
+
 #coverage report files
 *.gcno
 

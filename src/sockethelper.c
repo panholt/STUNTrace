@@ -7,9 +7,10 @@
 
 #include <poll.h>
 
+
 #include <stunclient.h>
 #include "sockethelper.h"
-
+#include "utils.h"
 
 
 int
@@ -159,10 +160,11 @@ socketListenDemux(void* ptr)
         }
         else
         {
-          config->data_handler(&config->socketConfig[i],
-                               (struct sockaddr*)&their_addr,
-                               config->socketConfig[i].tInst,
-                               buf);
+          /* TODO IPV6..*/
+          config->icmp_handler( &config->socketConfig[i],
+                                (struct sockaddr*)&their_addr,
+                                config->socketConfig[i].tInst,
+                                getICMPTypeFromBuf(AF_INET, buf) );
         }
 
       }

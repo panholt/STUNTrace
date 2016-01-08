@@ -14,41 +14,49 @@
 #define MAX_LISTEN_SOCKETS 10
 
 
-struct socketConfig{
-    void *tInst;
-    int sockfd;
-    char* user;
-    char* pass;
-    char* realm;
-    int firstPktLen;
+struct socketConfig {
+  void* tInst;
+  int   sockfd;
+  char* user;
+  char* pass;
+  char* realm;
+  int   firstPktLen;
 };
 
 
-struct listenConfig{
-    struct socketConfig socketConfig[MAX_LISTEN_SOCKETS];
-    int numSockets;
-    /*Handles normal data like RTP etc */
-    void (*data_handler)(struct socketConfig *, struct sockaddr *,
-                         void *, unsigned char *);
-    /*Handles STUN packet*/
-    void (*stun_handler)(struct socketConfig *, struct sockaddr *,
-                         void *, unsigned char *, int);
+struct listenConfig {
+  struct socketConfig socketConfig[MAX_LISTEN_SOCKETS];
+  int                 numSockets;
+  /*Handles normal data like RTP etc */
+  void (* icmp_handler)(struct socketConfig*,
+                        struct sockaddr    *,
+                        void               *,
+                        int);
+  /*Handles STUN packet*/
+  void (* stun_handler)(struct socketConfig*,
+                        struct sockaddr    *,
+                        void               *,
+                        unsigned char      *,
+                        int);
 };
 
-int createLocalSocket(int ai_family,
-                         const struct sockaddr *localIp,
-                          int                    ai_socktype,
-                         uint16_t port);
+int
+createLocalSocket(int                    ai_family,
+                  const struct sockaddr* localIp,
+                  int                    ai_socktype,
+                  uint16_t               port);
 
 
-void *socketListenDemux(void *ptr);
+void*
+socketListenDemux(void* ptr);
 
-void sendPacket(int sockHandle,
-                const uint8_t *buf,
-                int bufLen,
-                const struct sockaddr *dstAddr,
-                bool useRelay,
-                uint8_t ttl);
+void
+sendPacket(int                    sockHandle,
+           const uint8_t*         buf,
+           int                    bufLen,
+           const struct sockaddr* dstAddr,
+           bool                   useRelay,
+           uint8_t                ttl);
 
 
 #endif
