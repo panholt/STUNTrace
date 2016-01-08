@@ -42,8 +42,8 @@ int                        sockfd;
 int                        icmpSocket;
 int                        querySocket;
 static struct listenConfig listenConfig;
-struct timeval start;
-struct timeval stop;
+struct timeval             start;
+struct timeval             stop;
 
 pthread_mutex_t mutex;
 
@@ -152,27 +152,27 @@ StunTraceCallBack(void*                    userCtx,
   if (data->nodeAddr == NULL)
   {
       printf(" * \n");
-
   }
-  else{
-  sockaddr_toString(data->nodeAddr,
-                    addr,
-                    sizeof(addr),
-                    false);
-
-
-
-  pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
-  if (data->trace_num <= 1)
+  else
   {
-    asnum = asLookup(addr);
-    pa_addIpInfo(trace, data->nodeAddr, asnum);
-  }
-  printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
-         addr,
-         data->rtt / 1000, data->rtt % 1000,
-         data->retransmits,
-         asnum);
+    sockaddr_toString(data->nodeAddr,
+                      addr,
+                      sizeof(addr),
+                      false);
+
+
+
+    pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
+    if (data->trace_num <= 1)
+    {
+      asnum = asLookup(addr);
+      pa_addIpInfo(trace, data->nodeAddr, asnum);
+    }
+    printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
+           addr,
+           data->rtt / 1000, data->rtt % 1000,
+           data->retransmits,
+           asnum);
   }
   if (data->traceEnd)
   {
@@ -274,8 +274,8 @@ icmpHandler(struct socketConfig* config,
 {
   (void)config;
   StunClient_HandleICMP( (STUN_CLIENT_DATA*)cb,
-                           fromAddr,
-                           icmpType );
+                         fromAddr,
+                         icmpType );
 
 }
 
@@ -423,13 +423,13 @@ main(int   argc,
     exit(1);
   }
 
-StunClient_Alloc(&clientData);
+  StunClient_Alloc(&clientData);
   /* Setting up UDP socket and and aICMP sockhandle */
   sockfd = createLocalSocket(config.remoteAddr.ss_family,
                              (struct sockaddr*)&config.localAddr,
                              SOCK_DGRAM,
                              0);
-  listenConfig.tInst  = clientData;
+  listenConfig.tInst                  = clientData;
   listenConfig.socketConfig[0].sockfd = sockfd;
   listenConfig.socketConfig[0].user   = username;
   listenConfig.socketConfig[0].pass   = password;
@@ -437,8 +437,8 @@ StunClient_Alloc(&clientData);
   listenConfig.icmp_handler           = icmpHandler;
   listenConfig.numSockets             = 1;
   #if defined(__linux)
-    int val = 1;
-  if (setsockopt (sockfd, SOL_IP, IP_RECVERR, &val, sizeof (val)) < 0)
+  int val = 1;
+  if (setsockopt( sockfd, SOL_IP, IP_RECVERR, &val, sizeof (val) ) < 0)
   {
     perror("setsockopt IP_RECVERR");
     exit(1);
@@ -461,7 +461,7 @@ StunClient_Alloc(&clientData);
     exit(1);
 
   }
-  listenConfig.socketConfig[1].tInst  = clientData;
+
   listenConfig.socketConfig[1].sockfd = icmpSocket;
   listenConfig.socketConfig[1].user   = NULL;
   listenConfig.socketConfig[1].pass   = NULL;
@@ -472,9 +472,9 @@ StunClient_Alloc(&clientData);
 
 
 
-   //StunClient_RegisterLogger(clientData,
-    //                        stundbg,
-    //                        NULL);
+  /* StunClient_RegisterLogger(clientData, */
+  /*                        stundbg, */
+  /*                        NULL); */
 
   pthread_create(&stunTickThread, NULL, tickStun, (void*)clientData);
   pthread_create(&socketListenThread,
@@ -522,4 +522,4 @@ StunClient_Alloc(&clientData);
 /* sleep(100); */
 /* exit(0); */
   pause();
-  }
+}
