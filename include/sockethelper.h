@@ -51,10 +51,12 @@ void*
 socketListenDemux(void* ptr);
 
 void
-sendPacket(int                    sockHandle,
+sendPacket(void*                  ctx,
+           int                    sockHandle,
            const uint8_t*         buf,
            int                    bufLen,
            const struct sockaddr* dstAddr,
+           int                    proto,
            bool                   useRelay,
            uint8_t                ttl);
 

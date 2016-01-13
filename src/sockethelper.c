@@ -237,10 +237,12 @@ socketListenDemux(void* ptr)
 
 
 void
-sendPacket(int                    sockHandle,
+sendPacket(void*                  ctx,
+           int                    sockHandle,
            const uint8_t*         buf,
            int                    bufLen,
            const struct sockaddr* dstAddr,
+           int                    proto,
            bool                   useRelay,
            uint8_t                ttl)
 {
@@ -248,7 +250,10 @@ sendPacket(int                    sockHandle,
   /* char addrStr[SOCKADDR_MAX_STRLEN]; */
   uint32_t sock_ttl;
   uint32_t addr_len;
+  (void) ctx;
+  (void) proto; /* Todo: Sanity check? */
   (void) useRelay;
+
 
   if (dstAddr->sa_family == AF_INET)
   {
