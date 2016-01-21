@@ -68,6 +68,7 @@ struct trace_config {
   int32_t                 start_ttl;
   uint32_t                wait_ms;
   uint32_t                max_recuring;
+  bool                    debug;
   struct sockaddr_storage remoteAddr;
   struct sockaddr_storage localAddr;
 };
@@ -111,10 +112,11 @@ printSegmentAnalytics(const struct pa_trace* trace)
                                numseg);
 
     printf( "------- Path Stats ------\n");
-    printf( "hops: %i, samples: %i, inactive: %i\n",
+    printf( "hops: %i, samples: %i, inactive: %i (of %i)\n",
           pa_getNumberOfHops(trace),
           pa_getNumberOfSamples(trace),
-          pa_getNumberOfInactiveHops(trace) );
+          pa_getNumberOfInactiveHops(trace),
+          pa_getNumberOfHops(trace) );
 
   for (int i = 0; i < numseg; i++)
   {
@@ -151,7 +153,8 @@ StunTraceCallBack(void*                    userCtx,
   int              asnum = 0;
   if (data->nodeAddr == NULL)
   {
-      printf(" * \n");
+      //pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
+      printf(" %i * \n", data->hop);
   }
   else
   {
@@ -159,8 +162,6 @@ StunTraceCallBack(void*                    userCtx,
                       addr,
                       sizeof(addr),
                       false);
-
-
 
     pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
     if (data->trace_num <= 1)
@@ -335,6 +336,7 @@ main(int   argc,
   config.max_ttl      = 255;
   config.wait_ms      = 0;
   config.max_recuring = 1;
+  config.debug        = false;
 
   static struct option long_options[] = {
     {"interface", 1, 0, 'i'},
@@ -344,8 +346,7 @@ main(int   argc,
     {"start_ttl", 1, 0, 'M'},
     {"waittime", 1, 0, 'w'},
     {"recuring", 1, 0, 'r'},
-    {"json", 0, 0, 'x'},
-    {"csv", 0, 0, 'c'},
+    {"debug", 0, 0, 'd'},
     {"help", 0, 0, 'h'},
     {"version", 0, 0, 'v'},
     {NULL, 0, NULL, 0}
@@ -356,7 +357,7 @@ main(int   argc,
     exit(0);
   }
   int option_index = 0;
-  while ( ( c = getopt_long(argc, argv, "hvi:p:j:m:M:w:r:",
+  while ( ( c = getopt_long(argc, argv, "hvdi:p:j:m:M:w:r:",
                             long_options, &option_index) ) != -1 )
   {
     /* int this_option_optind = optind ? optind : 1; */
@@ -389,6 +390,9 @@ main(int   argc,
       break;
     case 'r':
       config.max_recuring = atoi(optarg);
+      break;
+    case 'd':
+      config.debug = true;
       break;
     case 'h':
       printUsage();
@@ -471,11 +475,13 @@ main(int   argc,
   signal(SIGINT, teardown);
 
 
-
-  /* StunClient_RegisterLogger(clientData, */
-  /*                        stundbg, */
-  /*                        NULL); */
-
+  if (config.debug)
+  {
+    printf("registering logger\n");
+    StunClient_RegisterLogger(clientData,
+                              stundbg,
+                              clientData);
+  }
   pthread_create(&stunTickThread, NULL, tickStun, (void*)clientData);
   pthread_create(&socketListenThread,
                  NULL,
