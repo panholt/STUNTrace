@@ -37,6 +37,7 @@
 #include "iphelper.h"
 #include "sockethelper.h"
 #include "ip_query.h"
+#include "version.h"
 
 int                        sockfd;
 int                        icmpSocket;
@@ -398,7 +399,7 @@ main(int   argc,
       printUsage();
       break;
     case 'v':
-      printf("Version 0.1\n");
+      printf("Version %s\n", VERSION_SHORT);
       exit(0);
       break;
     default:

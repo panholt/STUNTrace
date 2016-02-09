@@ -1,18 +1,26 @@
 #
 #
-# top level build file for nptrace
+# top level build file for stuntrace
 
 ## prepare CMAKE
 cmake_minimum_required ( VERSION 3.2.0 )
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
+include ( Uncrustify )
+include ( GetGitRevisionDescription )
+git_describe(VERSION --tags --dirty=-d)
 
-set ( NPTRACE_VERSION_MAJOR "0" CACHE STRING "Project major version number")
-set ( NPTRACE_VERSION_MINOR "1" CACHE STRING "Project minor version number" )
-set ( NPTRACE_VERSION_PATCH "0" CACHE STRING "Project patch version number" )
-mark_as_advanced(NPTRACE_VERSION_MAJOR NPTRACE_VERSION_MINOR NPTRACE_VERSION_PATCH)
+string(REGEX REPLACE "^v([0-9]+)\\..*" "\\1" STUNTRACE_VERSION_MAJOR "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.([0-9]+).*" "\\1" STUNTRACE_VERSION_MINOR "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" STUNTRACE_VERSION_PATCH "${VERSION}")
+string(REGEX REPLACE "^v[0-9]+\\.[0-9]+\\.[0-9]+(.*)" "\\1" STUNTRACE_VERSION_SHA1 "${VERSION}")
+mark_as_advanced(STUNTRACE_VERSION_MAJOR STUNTRACE_VERSION_MINOR STUNTRACE_VERSION_PATCH)
 
-set ( NPTRACE_VERSION "${NPTRACE_VERSION_MAJOR}.${NPTRACE_VERSION_MINOR}.${NPTRACE_VERSION_PATCH}" )
+set ( STUNTRACE_VERSION "${STUNTRACE_VERSION_MAJOR}.${STUNTRACE_VERSION_MINOR}.${STUNTRACE_VERSION_PATCH}" )
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.c.in
+                ${CMAKE_CURRENT_BINARY_DIR}/version.c)
+set(version_file "${CMAKE_CURRENT_BINARY_DIR}/version.c")
 
-project ( "NPTRACE" VERSION "${NPTRACE_VERSION}")
+project ( "stuntrace" VERSION "${STUNTRACE_VERSION}")
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include ( Uncrustify )

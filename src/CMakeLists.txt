@@ -1,6 +1,6 @@
 #
 #
-# nptrace, network path trace
+# stuntrace, network path trace
 
 
 set (ADDITIONAL_LIBS "")
@@ -11,27 +11,28 @@ set (ADDITIONAL_LIBS "")
 #  list(APPEND ADDITIONAL_LIBS ${OPENSSL_LIBRARIES})
 #endif( OPENSSL_FOUND )
 
-add_executable ( nptrace
+add_executable ( stuntrace
+                 ${version_file}
                  iphelper.c
                  sockethelper.c
                  ip_query.c
                  utils.c
-                 nptrace.c )
+                 stuntrace.c )
 
-target_link_libraries ( nptrace PRIVATE pa
+target_link_libraries ( stuntrace PRIVATE pa
                         sockaddrutil
                         stunlib
                         pthread
                         ${ADDITIONAL_LIBS})
 
-set_target_properties(nptrace PROPERTIES INSTALL_RPATH "${install_dir}/lib")
-set_target_properties(nptrace PROPERTIES BUILD_WITH_INSTALL_RPATH ON)
+set_target_properties(stuntrace PROPERTIES INSTALL_RPATH "${install_dir}/lib")
+set_target_properties(stuntrace PROPERTIES BUILD_WITH_INSTALL_RPATH ON)
 
 include_directories ( ../include )
 link_directories ( ${CHECK_LIBRARY_DIRS} )
 
 set (crusty_files
-     nptrace.c
+     stuntrace.c
      iphelper.c
      sockethelper.c)
 
