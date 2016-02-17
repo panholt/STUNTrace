@@ -45,6 +45,7 @@ int                        querySocket;
 static struct listenConfig listenConfig;
 struct timeval             start;
 struct timeval             stop;
+bool  doASLookup;
 
 pthread_mutex_t mutex;
 
@@ -70,6 +71,7 @@ struct trace_config {
   uint32_t                wait_ms;
   uint32_t                max_recuring;
   bool                    debug;
+  bool                    as_lookup;
   struct sockaddr_storage remoteAddr;
   struct sockaddr_storage localAddr;
 };
@@ -94,12 +96,12 @@ printTimeSpent(uint32_t wait)
     (stop.tv_sec * 1000000 +
      stop.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec);
 
-    printf("Time spent: %i.%ims", time / 1000, time % 1000);
+  printf("Time spent: %i.%ims", time / 1000, time % 1000);
   if (wait > 0)
   {
-    printf(" (wait: %ims)",       wait);
+    printf(" (wait: %ims)", wait);
   }
-    printf("\n");
+  printf("\n");
 
 }
 
@@ -112,8 +114,8 @@ printSegmentAnalytics(const struct pa_trace* trace)
                                segments,
                                numseg);
 
-    printf( "------- Path Stats ------\n");
-    printf( "hops: %i, samples: %i, inactive: %i (of %i)\n",
+  printf( "------- Path Stats ------\n");
+  printf( "hops: %i, samples: %i, inactive: %i (of %i)\n",
           pa_getNumberOfHops(trace),
           pa_getNumberOfSamples(trace),
           pa_getNumberOfInactiveHops(trace),
@@ -154,8 +156,8 @@ StunTraceCallBack(void*                    userCtx,
   int              asnum = 0;
   if (data->nodeAddr == NULL)
   {
-      //pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
-      printf(" %i * \n", data->hop);
+    /* pa_addHop(trace, data->hop, data->nodeAddr, data->rtt); */
+    printf(" %i * \n", data->hop);
   }
   else
   {
@@ -167,8 +169,11 @@ StunTraceCallBack(void*                    userCtx,
     pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
     if (data->trace_num <= 1)
     {
-      asnum = asLookup(addr);
-      pa_addIpInfo(trace, data->nodeAddr, asnum);
+      if(doASLookup )
+      {
+         asnum = asLookup(addr);
+         pa_addIpInfo(trace, data->nodeAddr, asnum);
+      }
     }
     printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
            addr,
@@ -300,10 +305,8 @@ printUsage()
   printf("  -m [ttl], --max_ttl [ttl]     Max value for TTL\n");
   printf("  -M [ttl], --start_ttl [ttl]   Start at ttl value\n");
   printf("  -w [ms], --waittime [ms]      Wait ms for ICMP response\n");
-  printf(
-    "  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
-  printf("  -x, --json                    Output in JSON format\n");
-  printf("  -c, --csv                     Output in JSON format\n");
+  printf("  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
+  printf("  -l, --as                      Enable AS number lookup\n");
   printf("  -v, --version                 Prints version number\n");
   printf("  -h, --help                    Print help text\n");
   exit(0);
@@ -337,6 +340,7 @@ main(int   argc,
   config.max_ttl      = 255;
   config.wait_ms      = 0;
   config.max_recuring = 1;
+  config.as_lookup    = false;
   config.debug        = false;
 
   static struct option long_options[] = {
@@ -347,6 +351,7 @@ main(int   argc,
     {"start_ttl", 1, 0, 'M'},
     {"waittime", 1, 0, 'w'},
     {"recuring", 1, 0, 'r'},
+    {"as", 0, 0, 'l'},
     {"debug", 0, 0, 'd'},
     {"help", 0, 0, 'h'},
     {"version", 0, 0, 'v'},
@@ -358,7 +363,7 @@ main(int   argc,
     exit(0);
   }
   int option_index = 0;
-  while ( ( c = getopt_long(argc, argv, "hvdi:p:j:m:M:w:r:",
+  while ( ( c = getopt_long(argc, argv, "hvdli:p:j:m:M:w:r:",
                             long_options, &option_index) ) != -1 )
   {
     /* int this_option_optind = optind ? optind : 1; */
@@ -395,6 +400,10 @@ main(int   argc,
     case 'd':
       config.debug = true;
       break;
+    case 'l':
+      config.as_lookup = true;
+      break;
+
     case 'h':
       printUsage();
       break;
@@ -416,7 +425,7 @@ main(int   argc,
       exit(1);
     }
   }
-
+doASLookup = config.as_lookup;
 
   if ( !getLocalInterFaceAddrs( (struct sockaddr*)&config.localAddr,
                                 config.interface,

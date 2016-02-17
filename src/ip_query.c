@@ -24,7 +24,8 @@ whois_query(char*  server,
 
   /* first, load up address structs with getaddrinfo(): */
   memset(&hints, 0, sizeof hints);
-  hints.ai_family   = AF_UNSPEC;
+  //hints.ai_family   = AF_UNSPEC;
+  hints.ai_family   = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
   error = getaddrinfo(server, "43", &hints, &res);
