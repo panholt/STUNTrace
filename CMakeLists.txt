@@ -129,7 +129,7 @@ Include(ExternalProject)
 
 ExternalProject_Add(
    project_pa
-   GIT_REPOSITORY https://github.com/palerikm/PAlib
+   GIT_REPOSITORY https://github.com/NATTools/PAlib
    CMAKE_ARGS -Doptimize=OFF -Dbuild_docs=OFF -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
    INSTALL_DIR "${dist_dir}"
    UPDATE_DISCONNECTED 1
@@ -170,6 +170,19 @@ set_property(TARGET stunlib PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMA
 add_dependencies(stunlib project_stunlib)
 
 
+ExternalProject_Add(
+   project_cass_driver
+   GIT_REPOSITORY https://github.com/datastax/cpp-driver
+   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${install_dir} -DCMAKE_INSTALL_LIBDIR=${install_dir}/lib/
+   INSTALL_DIR ${install_dir}
+   UPDATE_DISCONNECTED 1
+)
+
+ExternalProject_Get_Property(project_cass_driver install_dir)
+include_directories ( "${install_dir}/include" )
+add_library(cassandra STATIC IMPORTED)
+set_property(TARGET cassandra PROPERTY IMPORTED_LOCATION "${install_dir}/lib/${CMAKE_SHARED_MODULE_PREFIX}cassandra${CMAKE_SHARED_LIBRARY_SUFFIX}")
+add_dependencies(cassandra project_cass_driver)
 
 ## include the parts
 add_subdirectory ( include )

@@ -11,6 +11,8 @@ set (ADDITIONAL_LIBS "")
 #  list(APPEND ADDITIONAL_LIBS ${OPENSSL_LIBRARIES})
 #endif( OPENSSL_FOUND )
 
+
+
 add_executable ( stuntrace
                  ${version_file}
                  iphelper.c
@@ -23,6 +25,7 @@ target_link_libraries ( stuntrace PRIVATE pa
                         sockaddrutil
                         stunlib
                         pthread
+                        cassandra
                         ${ADDITIONAL_LIBS})
 
 set_target_properties(stuntrace PROPERTIES INSTALL_RPATH "${install_dir}/lib")

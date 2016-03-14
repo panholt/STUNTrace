@@ -32,6 +32,11 @@
 #include <stun_intern.h>
 
 #include <palib.h>
+#include <json_output.h>
+
+#include <uuid/uuid.h>
+
+#include <cassandra.h>
 
 #include "utils.h"
 #include "iphelper.h"
@@ -45,13 +50,13 @@ int                        querySocket;
 static struct listenConfig listenConfig;
 struct timeval             start;
 struct timeval             stop;
-bool  doASLookup;
+bool                       doASLookup;
 
 pthread_mutex_t mutex;
 
 char username[] = "evtj:h6vY\0";
 char password[] = "VOkJxbRl1RmTxUk/WvJxBt\0";
-
+char uuid_str[37];
 #define max_iface_len 10
 
 typedef enum {
@@ -63,17 +68,20 @@ typedef enum {
 OUTPUT_FORMAT out_format = txt;
 
 struct trace_config {
-  char                    interface[10];
-  uint16_t                port;
-  uint16_t                paralell;
-  int32_t                 max_ttl;
-  int32_t                 start_ttl;
-  uint32_t                wait_ms;
-  uint32_t                max_recuring;
-  bool                    debug;
-  bool                    as_lookup;
-  struct sockaddr_storage remoteAddr;
-  struct sockaddr_storage localAddr;
+  char     interface[10];
+  uint16_t port;
+  uint16_t paralell;
+  int32_t  max_ttl;
+  int32_t  start_ttl;
+  uint32_t wait_ms;
+  uint32_t max_recuring;
+  bool     debug;
+  bool     as_lookup;
+  /* struct sockaddr_storage remoteAddr; */
+  /* struct sockaddr_storage localAddr; */
+  struct pa_trace trace;
+  bool            use_cassandra;
+  char            cassandra_fqdn[255];
 };
 
 
@@ -147,13 +155,94 @@ printSegmentAnalytics(const struct pa_trace* trace)
 }
 
 void
+postToCasandra(const char*            fqdn,
+               const struct pa_trace* trace)
+{
+  /* Setup and connect to cluster */
+  CassFuture*  connect_future = NULL;
+  CassCluster* cluster        = cass_cluster_new();
+  CassSession* session        = cass_session_new();
+
+  /* Add contact points */
+  cass_cluster_set_contact_points(cluster, fqdn);
+  cass_cluster_set_whitelist_filtering(cluster,
+                                     fqdn);
+
+  /* Provide the cluster object as configuration to connect the session */
+  connect_future = cass_session_connect(session, cluster);
+
+  if (cass_future_error_code(connect_future) == CASS_OK)
+  {
+    CassFuture* close_future = NULL;
+
+    /* Build statement and execute query */
+    /* const char* query = "SELECT keyspace_name " */
+    /*                    "FROM system.schema_keyspaces;"; */
+    size_t numNodes = pa_getNumberOfHops(trace);
+    for (size_t i = 1; i <= numNodes; i++)
+    {
+      char query[4096];
+      strncpy(query, "INSERT INTO stuntrace.pathtrace JSON '", sizeof query);
+      palib_traceToJsonTableEntry(query,
+                                  i,
+                                  trace,
+                                  sizeof(query) - strlen(query) - 1);
+      strncat(query, "}';", sizeof(query) - strlen(query) - 1);
+
+      CassStatement* statement = cass_statement_new(query, 0);
+
+      CassFuture* result_future = cass_session_execute(session, statement);
+
+      if (cass_future_error_code(result_future) == CASS_OK)
+      {
+        /* Retrieve result set and iterate over the rows */
+        //printf("Inserted into db.. I think...\n");
+        /* cass_result_free(result); */
+        /* cass_iterator_free(rows); */
+      }
+      else
+      {
+        /* Handle error */
+        const char* message;
+        size_t      message_length;
+        cass_future_error_message(result_future, &message, &message_length);
+        fprintf(stderr, "Unable to run query: '%.*s'\n", (int)message_length,
+                message);
+      }
+
+      cass_statement_free(statement);
+      cass_future_free(result_future);
+    }
+    /* Close the session */
+    close_future = cass_session_close(session);
+    cass_future_wait(close_future);
+    cass_future_free(close_future);
+    printf("Results posted to Cassandra\n");
+  }
+  else
+  {
+    /* Handle error */
+    const char* message;
+    size_t      message_length;
+    cass_future_error_message(connect_future, &message, &message_length);
+    fprintf(stderr, "Unable to connect: '%.*s'\n", (int)message_length,
+            message);
+  }
+
+  cass_future_free(connect_future);
+  cass_cluster_free(cluster);
+  cass_session_free(session);
+
+}
+
+void
 StunTraceCallBack(void*                    userCtx,
                   StunTraceCallBackData_T* data)
 {
-
-  struct pa_trace* trace = (struct pa_trace*) userCtx;
-  char             addr[SOCKADDR_MAX_STRLEN];
-  int              asnum = 0;
+  struct trace_config* config = (struct trace_config*) userCtx;
+  struct pa_trace*     trace  = &config->trace;
+  char                 addr[SOCKADDR_MAX_STRLEN];
+  int                  asnum = 0;
   if (data->nodeAddr == NULL)
   {
     /* pa_addHop(trace, data->hop, data->nodeAddr, data->rtt); */
@@ -169,10 +258,10 @@ StunTraceCallBack(void*                    userCtx,
     pa_addHop(trace, data->hop, data->nodeAddr, data->rtt);
     if (data->trace_num <= 1)
     {
-      if(doASLookup )
+      if (doASLookup)
       {
-         asnum = asLookup(addr);
-         pa_addIpInfo(trace, data->nodeAddr, asnum);
+        asnum = asLookup(addr);
+        pa_addIpInfo(trace, data->nodeAddr, asnum);
       }
     }
     printf(" %i %s %i.%ims (%i)  (AS:%i)\n", data->hop,
@@ -187,6 +276,12 @@ StunTraceCallBack(void*                    userCtx,
 
     if (data->done)
     {
+      /* Post to db */
+      if (config->use_cassandra)
+      {
+        postToCasandra(config->cassandra_fqdn, trace);
+      }
+
       printTimeSpent(0);
       exit(0);
     }
@@ -305,7 +400,8 @@ printUsage()
   printf("  -m [ttl], --max_ttl [ttl]     Max value for TTL\n");
   printf("  -M [ttl], --start_ttl [ttl]   Start at ttl value\n");
   printf("  -w [ms], --waittime [ms]      Wait ms for ICMP response\n");
-  printf("  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
+  printf(
+    "  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
   printf("  -l, --as                      Enable AS number lookup\n");
   printf("  -v, --version                 Prints version number\n");
   printf("  -h, --help                    Print help text\n");
@@ -324,12 +420,14 @@ main(int   argc,
 
   STUN_CLIENT_DATA* clientData;
   char              addrStr[SOCKADDR_MAX_STRLEN];
-
-  struct pa_trace trace;
-
+  // generate
+  uuid_t uuid;
+  uuid_generate(uuid);
+  uuid_unparse_lower(uuid, uuid_str);
 
   struct trace_config config;
-  int                 c;
+  pa_init(&config.trace, uuid_str);
+  int c;
   /* int                 digit_optind = 0; */
   /* set config to default values */
   strncpy(config.interface, "default", 7);
@@ -353,6 +451,7 @@ main(int   argc,
     {"recuring", 1, 0, 'r'},
     {"as", 0, 0, 'l'},
     {"debug", 0, 0, 'd'},
+    {"cassandra", 1, 0, '3'},
     {"help", 0, 0, 'h'},
     {"version", 0, 0, 'v'},
     {NULL, 0, NULL, 0}
@@ -403,6 +502,13 @@ main(int   argc,
     case 'l':
       config.as_lookup = true;
       break;
+    case '3':
+      if (optarg)
+      {
+        config.use_cassandra = true;
+      }
+      strncpy(config.cassandra_fqdn, optarg, 255);
+      break;
 
     case 'h':
       printUsage();
@@ -417,7 +523,7 @@ main(int   argc,
   }
   if (optind < argc)
   {
-    if ( !getRemoteIpAddr( (struct sockaddr*)&config.remoteAddr,
+    if ( !getRemoteIpAddr( (struct sockaddr*)&config.trace.to_addr,
                            argv[optind++],
                            config.port ) )
     {
@@ -425,11 +531,11 @@ main(int   argc,
       exit(1);
     }
   }
-doASLookup = config.as_lookup;
+  doASLookup = config.as_lookup;
 
-  if ( !getLocalInterFaceAddrs( (struct sockaddr*)&config.localAddr,
+  if ( !getLocalInterFaceAddrs( (struct sockaddr*)&config.trace.from_addr,
                                 config.interface,
-                                config.remoteAddr.ss_family,
+                                config.trace.to_addr.ss_family,
                                 IPv6_ADDR_NORMAL,
                                 false ) )
   {
@@ -439,8 +545,8 @@ doASLookup = config.as_lookup;
 
   StunClient_Alloc(&clientData);
   /* Setting up UDP socket and and aICMP sockhandle */
-  sockfd = createLocalSocket(config.remoteAddr.ss_family,
-                             (struct sockaddr*)&config.localAddr,
+  sockfd = createLocalSocket(config.trace.to_addr.ss_family,
+                             (struct sockaddr*)&config.trace.from_addr,
                              SOCK_DGRAM,
                              0);
   listenConfig.tInst                  = clientData;
@@ -458,14 +564,15 @@ doASLookup = config.as_lookup;
     exit(1);
   }
   #else
-  if (config.remoteAddr.ss_family == AF_INET)
+  if (config.trace.to_addr.ss_family == AF_INET)
   {
-    icmpSocket = socket(config.remoteAddr.ss_family, SOCK_DGRAM, IPPROTO_ICMP);
+    icmpSocket =
+      socket(config.trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMP);
   }
   else
   {
     icmpSocket =
-      socket(config.remoteAddr.ss_family, SOCK_DGRAM, IPPROTO_ICMPV6);
+      socket(config.trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMPV6);
   }
 
   if (icmpSocket < 0)
@@ -503,29 +610,36 @@ doASLookup = config.as_lookup;
   srand( time(NULL) ); /* Initialise the random seed. */
 
 
-  pa_init(&trace);
+
   /* printf("AS: %i\n", asLookup("192.168.10.12")); */
+
+
 
   /* *starting here.. */
 
   printf( "Starting stuntrace from: '%s'",
-          sockaddr_toString( (struct sockaddr*)&config.localAddr,
+          sockaddr_toString( (struct sockaddr*)&config.trace.from_addr,
                              addrStr,
                              sizeof(addrStr),
                              true ) );
 
   printf( "to: '%s'\n",
-          sockaddr_toString( (struct sockaddr*)&config.remoteAddr,
+          sockaddr_toString( (struct sockaddr*)&config.trace.to_addr,
                              addrStr,
                              sizeof(addrStr),
                              true ) );
+  printf(" UUID: %s\n", uuid_str);
 
   gettimeofday(&start, NULL);
+
+
+  pa_addTimestamp(&config.trace, &start);
+
 /* #if 0 */
   int len = StunTrace_startTrace(clientData,
-                                 &trace,
-                                 (const struct sockaddr*)&config.remoteAddr,
-                                 (const struct sockaddr*)&config.localAddr,
+                                 &config,
+                                 (const struct sockaddr*)&config.trace.to_addr,
+                                 (const struct sockaddr*)&config.trace.from_addr,
                                  sockfd,
                                  username,
                                  password,
