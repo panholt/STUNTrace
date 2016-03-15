@@ -25,6 +25,7 @@ addons:
     sources:
       - george-edison55-precise-backports
     packages:
+      - libuv-dev
       - cmake
       - cmake-data
 
