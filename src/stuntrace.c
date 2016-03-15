@@ -187,7 +187,10 @@ postToCasandra(const char*            fqdn,
                                   i,
                                   trace,
                                   sizeof(query) - strlen(query) - 1);
-      strncat(query, "}';", sizeof(query) - strlen(query) - 1);
+
+      strncat(query, "';", sizeof(query) - strlen(query) - 1);
+
+        printf("Query: %s\n", query);
 
       CassStatement* statement = cass_statement_new(query, 0);
 
