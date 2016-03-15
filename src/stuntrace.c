@@ -166,7 +166,7 @@ postToCasandra(const char*            fqdn,
   /* Add contact points */
   cass_cluster_set_contact_points(cluster, fqdn);
   cass_cluster_set_whitelist_filtering(cluster,
-                                     fqdn);
+                                       fqdn);
 
   /* Provide the cluster object as configuration to connect the session */
   connect_future = cass_session_connect(session, cluster);
@@ -196,7 +196,7 @@ postToCasandra(const char*            fqdn,
       if (cass_future_error_code(result_future) == CASS_OK)
       {
         /* Retrieve result set and iterate over the rows */
-        //printf("Inserted into db.. I think...\n");
+        /* printf("Inserted into db.. I think...\n"); */
         /* cass_result_free(result); */
         /* cass_iterator_free(rows); */
       }
@@ -420,7 +420,7 @@ main(int   argc,
 
   STUN_CLIENT_DATA* clientData;
   char              addrStr[SOCKADDR_MAX_STRLEN];
-  // generate
+  /* generate */
   uuid_t uuid;
   uuid_generate(uuid);
   uuid_unparse_lower(uuid, uuid_str);

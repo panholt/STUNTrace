@@ -5,6 +5,10 @@
 
 set (ADDITIONAL_LIBS "")
 
+if(NOT APPLE)
+ list(APPEND ADDITIONAL_LIBS "uuid")
+endif()
+
 #find_package( OpenSSL )
 #if( OPENSSL_FOUND )
 #  include_directories( ${OPENSSL_INCLUDE_DIR} )
