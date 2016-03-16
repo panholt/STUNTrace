@@ -70,10 +70,6 @@ OUTPUT_FORMAT out_format = txt;
 struct trace_config {
   char     interface[10];
   uint16_t port;
-  uint16_t paralell;
-  int32_t  max_ttl;
-  int32_t  start_ttl;
-  uint32_t wait_ms;
   uint32_t max_recuring;
   bool     debug;
   bool     as_lookup;
@@ -189,8 +185,6 @@ postToCasandra(const char*            fqdn,
                                   sizeof(query) - strlen(query) - 1);
 
       strncat(query, "';", sizeof(query) - strlen(query) - 1);
-
-        printf("Query: %s\n", query);
 
       CassStatement* statement = cass_statement_new(query, 0);
 
@@ -398,60 +392,35 @@ printUsage()
 {
   printf("Usage: nptrace [options] host\n");
   printf("Options: \n");
-  printf("  -i, --interface               Interface\n");
-  printf("  -p, --port                    Destination port\n");
-  printf("  -j [N],  --jobs [N]           Allow N transactions at once\n");
-  printf("  -m [ttl], --max_ttl [ttl]     Max value for TTL\n");
-  printf("  -M [ttl], --start_ttl [ttl]   Start at ttl value\n");
-  printf("  -w [ms], --waittime [ms]      Wait ms for ICMP response\n");
-  printf(
-    "  -r [N], --recuring [N]        Number of recuring traces before stopping\n");
-  printf("  -l, --as                      Enable AS number lookup\n");
-  printf("  -v, --version                 Prints version number\n");
-  printf("  -h, --help                    Print help text\n");
+  printf("  -i, --interface           Interface\n");
+  printf("  -p <port>, --port <port>  Destination port\n");
+  printf("  -r [N], --recuring [N]    Number of recuring traces before stopping\n");
+  printf("  -l, --as                  Enable AS number lookup\n");
+  printf("  --cassandra <ip>          Send results to cassandra\n");
+  printf("  -v, --version             Print version number\n");
+  printf("  -h, --help                Print help text\n");
   exit(0);
-
 }
 
 
-
-int
-main(int   argc,
-     char* argv[])
+void
+configure(struct trace_config* config,
+          int                  argc,
+          char*                argv[])
 {
-  pthread_t stunTickThread;
-  pthread_t socketListenThread;
-
-  STUN_CLIENT_DATA* clientData;
-  char              addrStr[SOCKADDR_MAX_STRLEN];
-  /* generate */
-  uuid_t uuid;
-  uuid_generate(uuid);
-  uuid_unparse_lower(uuid, uuid_str);
-
-  struct trace_config config;
-  pa_init(&config.trace, uuid_str);
   int c;
   /* int                 digit_optind = 0; */
   /* set config to default values */
-  strncpy(config.interface, "default", 7);
-  config.port         = 3478;
-  config.paralell     = 4;
-  config.max_ttl      = 32;
-  config.start_ttl    = 1;
-  config.max_ttl      = 255;
-  config.wait_ms      = 0;
-  config.max_recuring = 1;
-  config.as_lookup    = false;
-  config.debug        = false;
+  strncpy(config->interface, "default", 7);
+  config->port          = 3478;
+  config->max_recuring  = 1;
+  config->as_lookup     = false;
+  config->debug         = false;
+  config->use_cassandra = false;
 
   static struct option long_options[] = {
     {"interface", 1, 0, 'i'},
     {"port", 1, 0, 'p'},
-    {"jobs", 1, 0, 'j'},
-    {"max_ttl", 1, 0, 'm'},
-    {"start_ttl", 1, 0, 'M'},
-    {"waittime", 1, 0, 'w'},
     {"recuring", 1, 0, 'r'},
     {"as", 0, 0, 'l'},
     {"debug", 0, 0, 'd'},
@@ -466,52 +435,33 @@ main(int   argc,
     exit(0);
   }
   int option_index = 0;
-  while ( ( c = getopt_long(argc, argv, "hvdli:p:j:m:M:w:r:",
+  while ( ( c = getopt_long(argc, argv, "hvdli:p:m:M:w:r:",
                             long_options, &option_index) ) != -1 )
   {
     /* int this_option_optind = optind ? optind : 1; */
     switch (c)
     {
-
-    case 'x':
-      out_format = json;
-      break;
-    case 'c':
-      out_format = csv;
-      break;
     case 'i':
-      strncpy(config.interface, optarg, max_iface_len);
+      strncpy(config->interface, optarg, max_iface_len);
       break;
     case 'p':
-      config.port = atoi(optarg);
-      break;
-    case 'j':
-      config.paralell = atoi(optarg);
-      break;
-    case 'm':
-      config.max_ttl = atoi(optarg);
-      break;
-    case 'M':
-      config.start_ttl = atoi(optarg);
-      break;
-    case 'w':
-      config.wait_ms = atoi(optarg);
+      config->port = atoi(optarg);
       break;
     case 'r':
-      config.max_recuring = atoi(optarg);
+      config->max_recuring = atoi(optarg);
       break;
     case 'd':
-      config.debug = true;
+      config->debug = true;
       break;
     case 'l':
-      config.as_lookup = true;
+      config->as_lookup = true;
       break;
     case '3':
       if (optarg)
       {
-        config.use_cassandra = true;
+        config->use_cassandra = true;
       }
-      strncpy(config.cassandra_fqdn, optarg, 255);
+      strncpy(config->cassandra_fqdn, optarg, 255);
       break;
 
     case 'h':
@@ -527,32 +477,37 @@ main(int   argc,
   }
   if (optind < argc)
   {
-    if ( !getRemoteIpAddr( (struct sockaddr*)&config.trace.to_addr,
+    if ( !getRemoteIpAddr( (struct sockaddr*)&config->trace.to_addr,
                            argv[optind++],
-                           config.port ) )
+                           config->port ) )
     {
       printf("Error getting remote IPaddr");
       exit(1);
     }
   }
-  doASLookup = config.as_lookup;
+  doASLookup = config->as_lookup;
 
-  if ( !getLocalInterFaceAddrs( (struct sockaddr*)&config.trace.from_addr,
-                                config.interface,
-                                config.trace.to_addr.ss_family,
+  if ( !getLocalInterFaceAddrs( (struct sockaddr*)&config->trace.from_addr,
+                                config->interface,
+                                config->trace.to_addr.ss_family,
                                 IPv6_ADDR_NORMAL,
                                 false ) )
   {
-    printf("Error getting IPaddr on %s\n", config.interface);
+    printf("Error getting IPaddr on %s\n", config->interface);
     exit(1);
   }
 
-  StunClient_Alloc(&clientData);
-  /* Setting up UDP socket and and aICMP sockhandle */
-  sockfd = createLocalSocket(config.trace.to_addr.ss_family,
-                             (struct sockaddr*)&config.trace.from_addr,
-                             SOCK_DGRAM,
-                             0);
+}
+
+
+int
+setupSocket(struct trace_config* config,
+            STUN_CLIENT_DATA*    clientData)
+{
+  int sockfd = createLocalSocket(config->trace.to_addr.ss_family,
+                                 (struct sockaddr*)&config->trace.from_addr,
+                                 SOCK_DGRAM,
+                                 0);
   listenConfig.tInst                  = clientData;
   listenConfig.socketConfig[0].sockfd = sockfd;
   listenConfig.socketConfig[0].user   = username;
@@ -568,15 +523,15 @@ main(int   argc,
     exit(1);
   }
   #else
-  if (config.trace.to_addr.ss_family == AF_INET)
+  if (config->trace.to_addr.ss_family == AF_INET)
   {
     icmpSocket =
-      socket(config.trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMP);
+      socket(config->trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMP);
   }
   else
   {
     icmpSocket =
-      socket(config.trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMPV6);
+      socket(config->trace.to_addr.ss_family, SOCK_DGRAM, IPPROTO_ICMPV6);
   }
 
   if (icmpSocket < 0)
@@ -593,12 +548,50 @@ main(int   argc,
   listenConfig.numSockets             = 2;
 
   #endif
+  return sockfd;
+}
+
+
+int
+main(int   argc,
+     char* argv[])
+{
+  pthread_t stunTickThread;
+  pthread_t socketListenThread;
+
+  STUN_CLIENT_DATA* clientData;
+  char              addrStr[SOCKADDR_MAX_STRLEN];
+
+  struct trace_config config;
+
+  /* Initialise the random seed. */
+  srand( time(NULL) );
+
+  /* Set up PAlib */
+  gettimeofday(&start, NULL);
+  uuid_t uuid;
+  uuid_generate(uuid);
+  uuid_unparse_lower(uuid, uuid_str);
+
+  pa_init(&config.trace, uuid_str);
+  pa_addTimestamp(&config.trace, &start);
+
+  /* Read cmd line argumens and set it up */
+  configure(&config,argc,argv);
+
+  /* Initialize STUNclient data structures */
+  StunClient_Alloc(&clientData);
+
+  /* Setting up UDP socket and and aICMP sockhandle */
+  sockfd = setupSocket(&config, clientData);
+
+  /* at least close the socket if we get a signal.. */
   signal(SIGINT, teardown);
 
-
+  /* Turn on debugging */
   if (config.debug)
   {
-    printf("registering logger\n");
+    printf("Registering logger\n");
     StunClient_RegisterLogger(clientData,
                               stundbg,
                               clientData);
@@ -608,18 +601,6 @@ main(int   argc,
                  NULL,
                  socketListenDemux,
                  (void*)&listenConfig);
-
-
-
-  srand( time(NULL) ); /* Initialise the random seed. */
-
-
-
-  /* printf("AS: %i\n", asLookup("192.168.10.12")); */
-
-
-
-  /* *starting here.. */
 
   printf( "Starting stuntrace from: '%s'",
           sockaddr_toString( (struct sockaddr*)&config.trace.from_addr,
@@ -632,16 +613,9 @@ main(int   argc,
                              addrStr,
                              sizeof(addrStr),
                              true ) );
-  printf(" UUID: %s\n", uuid_str);
-
-  gettimeofday(&start, NULL);
+  printf("UUID: %s\n", uuid_str);
 
 
-  pa_addTimestamp(&config.trace, &start);
-  pa_addFromAddr(&config.trace, (struct sockaddr*)&config.trace.from_addr);
-  pa_addToAddr(&config.trace, (struct sockaddr*)&config.trace.to_addr);
-
-/* #if 0 */
   int len = StunTrace_startTrace(clientData,
                                  &config,
                                  (const struct sockaddr*)&config.trace.to_addr,
@@ -654,8 +628,6 @@ main(int   argc,
                                  sendPacket);
 
   listenConfig.socketConfig[1].firstPktLen = len;
-/* #endif */
-/* sleep(100); */
-/* exit(0); */
+
   pause();
 }
