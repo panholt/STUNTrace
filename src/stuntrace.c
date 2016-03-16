@@ -198,6 +198,7 @@ postToCasandra(const char*            fqdn,
 
       if (cass_future_error_code(result_future) == CASS_OK)
       {
+        printf("Results posted to Cassandra\n");
         /* Retrieve result set and iterate over the rows */
         /* printf("Inserted into db.. I think...\n"); */
         /* cass_result_free(result); */
@@ -220,7 +221,7 @@ postToCasandra(const char*            fqdn,
     close_future = cass_session_close(session);
     cass_future_wait(close_future);
     cass_future_free(close_future);
-    printf("Results posted to Cassandra\n");
+
   }
   else
   {
@@ -609,7 +610,7 @@ main(int   argc,
                  (void*)&listenConfig);
 
 
-  /* pa_init(&result.trace); */
+
   srand( time(NULL) ); /* Initialise the random seed. */
 
 
@@ -637,6 +638,8 @@ main(int   argc,
 
 
   pa_addTimestamp(&config.trace, &start);
+  pa_addFromAddr(&config.trace, (struct sockaddr*)&config.trace.from_addr);
+  pa_addToAddr(&config.trace, (struct sockaddr*)&config.trace.to_addr);
 
 /* #if 0 */
   int len = StunTrace_startTrace(clientData,
