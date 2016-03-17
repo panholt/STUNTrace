@@ -5,6 +5,7 @@
 ## prepare CMAKE
 cmake_minimum_required ( VERSION 3.2.0 )
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 include ( Uncrustify )
 include ( GetGitRevisionDescription )
 git_describe(VERSION --tags --dirty=-d)
